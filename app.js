@@ -388,18 +388,9 @@ function playSynthFallback(frequency, duration, start, instrumentName) {
 
 function createPianoKeyboard() {
   if (!pianoKeyboardElement) return;
-	const whiteNotes = ["C", "D", "E", "F", "G", "A", "B", "C"];
-  const whiteSemitones = [0, 2, 4, 5, 7, 9, 11, 12];
-  whiteNotes.forEach((note, index) => {
+	["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].forEach((note, semitone) => {
 	const key = document.createElement("button");
-	key.className = "piano-key white-key";
-	key.textContent = note;
-	key.addEventListener("click", () => playKeyboardNote(whiteSemitones[index], key));
-	pianoKeyboardElement.appendChild(key);
-  });
-  [{ note: "C#", semitone: 1, className: "key-cs" }, { note: "D#", semitone: 3, className: "key-ds" }, { note: "F#", semitone: 6, className: "key-fs" }, { note: "G#", semitone: 8, className: "key-gs" }, { note: "A#", semitone: 10, className: "key-as" }].forEach(({ note, semitone, className }) => {
-	const key = document.createElement("button");
-	key.className = `piano-key black-key ${className}`;
+	key.className = `piano-key ${note.includes("#") ? "black-key" : "white-key"}`;
 	key.textContent = note;
 	key.addEventListener("click", () => playKeyboardNote(semitone, key));
 	pianoKeyboardElement.appendChild(key);
