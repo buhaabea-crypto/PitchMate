@@ -36,7 +36,7 @@ remains distinguishable from natural minor. Scores and streaks are tracked per
 exercise and difficulty, and saved with settings in browser localStorage.
 Playback uses the selected instrument and the tuner's A4 reference.
 
-The GA4 tag uses the placeholder measurement ID `G-XXXXXXXXXX`; replace it
-with your own ID to collect analytics.
+The page loads Google Tag Manager container `GTM-WHZ8ZHZS`. Configure the
+container's tags and triggers to send analytics data.
 
 Run the checks with `node --test tests\music-theory.test.js tests\pitch-detector.test.js tests\instrument-player.test.js tests\ear-training.test.js`.

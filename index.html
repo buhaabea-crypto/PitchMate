@@ -1,18 +1,19 @@
 ﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-WHZ8ZHZS"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>
   <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { window.dataLayer.push(arguments); }
-    gtag("js", new Date());
-    gtag("config", "G-XXXXXXXXXX");
     window.trackEvent = (name, params = {}) => {
       if (typeof window.gtag === "function") window.gtag("event", name, params);
     };
   </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="PitchMate — точный хроматический тюнер." />
   <title>PitchMate — Chromatic Tuner</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
