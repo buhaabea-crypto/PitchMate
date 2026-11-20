@@ -50,8 +50,18 @@ test("pitch matching starts detuned and invalid ranges fail explicitly", () => {
   const question = engine.create("pitch", "easy", 60, 60, 0.5, "mixed", () => 0);
   assert.equal(question.initialCents, -12);
   assert.equal(question.events[0].midi, 60);
-  assert.equal(engine.create("pitch", "hard", 60, 60, 0.5, "mixed", () => 0).initialCents, -1);
+  assert.equal(engine.create("pitch", "hard", 60, 60, 0.5, "mixed", () => 0).initialCents, -4);
   assert.throws(() => engine.create("pitch", "easy", 70, 60, 0.5, "mixed"), /Invalid exercise settings/);
+});
+
+test("pitch adjustment cancels hidden detuning with a three-cent tolerance", () => {
+  for (const sign of [0, 0.99]) {
+    const q = engine.create("pitch", "easy", 60, 60, 0.5, "mixed", randomSequence(0, 0, sign));
+    assert.ok(Math.abs(engine.pitchDeviation(q, 0)) > 3);
+    assert.equal(engine.pitchDeviation(q, -q.initialCents), 0);
+    assert.equal(Math.abs(engine.pitchDeviation(q, -q.initialCents + 3)), 3);
+    assert.equal(Math.abs(engine.pitchDeviation(q, -q.initialCents - 4)), 4);
+  }
 });
 
 test("scores count one attempt at a time and preserve the best streak", () => {

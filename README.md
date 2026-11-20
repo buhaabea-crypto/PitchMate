@@ -27,9 +27,10 @@ instrument, root range, speed and direction. Review the diagnostic card before
 advancing; use Space to replay, 1–9 to answer, and Enter for the next question.
 Each correct answer scores one point, plus one bonus point when the streak is
 at least two. The summary offers practice on the most frequently missed area.
-Pitch matching uses the slider and the
-target/adjusted playback buttons; the check accepts deviations within three
-cents. Dictation begins with a major tonic chord and checks pitch classes rather
+Pitch matching starts from a hidden detuning. The slider shows the adjustment
+from that starting pitch, not the deviation from the target; compare the two
+playback buttons by ear. The check accepts deviations within three cents and
+reveals the deviation afterward. Dictation begins with a major tonic chord and checks pitch classes rather
 than octaves. Melodic minor uses the ascending form in both directions so it
 remains distinguishable from natural minor. Scores and streaks are tracked per
 exercise and difficulty, and saved with settings in browser localStorage.

@@ -80,7 +80,7 @@ const EarTrainingEngine = (() => {
       if (question.direction === "descending") tones.reverse();
       question.events = tones.map((midi, index) => event(midi, index * beat, beat * 0.88, 0.55));
     } else if (mode === "pitch") {
-      const bounds = difficulty === "easy" ? [12, 40] : difficulty === "medium" ? [5, 30] : [1, 12];
+      const bounds = difficulty === "easy" ? [12, 40] : difficulty === "medium" ? [5, 30] : [4, 12];
       const magnitude = bounds[0] + Math.floor(random() * (bounds[1] - bounds[0] + 1));
       question.initialCents = (random() < 0.5 ? -1 : 1) * magnitude;
       question.events = [event(root, 0, 1, 0.65)];
@@ -106,5 +106,9 @@ const EarTrainingEngine = (() => {
   function matchesMelody(expected, actual) {
     return expected.length === actual.length && expected.every((note, index) => note === actual[index]);
   }
-  return { create, chords, scales, intervals, intervalNames, updateScore, matchesMelody };
+  /** @param {EarQuestion} question @param {number} adjustment */
+  function pitchDeviation(question, adjustment) {
+    return question.initialCents + adjustment;
+  }
+  return { create, chords, scales, intervals, intervalNames, updateScore, matchesMelody, pitchDeviation };
 })();

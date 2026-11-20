@@ -12,8 +12,8 @@
       earAuto: "Auto-advance", earStart: "New question", earReplay: "Replay", earHint: "Reference song",
       earNoHint: "No reference song is available for this interval.", earHintAscending: "Ascending reference",
       earReferenceCaution: "The reference is for an ascending interval; your question may use a different direction.",
-      earChoose: "Identify what you hear.", earPitchHelp: "Play the target, adjust your note and check within ±3 cents.",
-      earTarget: "Play target", earYourNote: "Play your note", earCheck: "Check", earDeviation: "Deviation",
+      earChoose: "Identify what you hear.", earPitchHelp: "Compare the target and your note, then adjust by ear to within ±3 cents. The slider shows your adjustment from the starting pitch.",
+      earTarget: "Play target", earYourNote: "Play your note", earCheck: "Check", earDeviation: "Adjustment from starting pitch", earPitchError: "Deviation from target",
       earMinusCent: "Lower by one cent", earPlusCent: "Raise by one cent",
       earDictationHelp: "Listen to the tonic chord and melody, then enter the notes. Octaves do not count.",
       earKey: "Key", earEntered: "Your notes", earUndo: "Undo", earClear: "Clear", earSubmit: "Submit",
@@ -34,8 +34,8 @@
       earAuto: "Автопереход", earStart: "Новое задание", earReplay: "Повторить", earHint: "Песня-подсказка",
       earNoHint: "Для этого интервала подсказка-песня недоступна.", earHintAscending: "Восходящий интервал",
       earReferenceCaution: "Песня иллюстрирует восходящий интервал; в задании направление может отличаться.",
-      earChoose: "Определите то, что вы слышите.", earPitchHelp: "Прослушайте эталон, настройте свою ноту и проверьте точность до ±3 центов.",
-      earTarget: "Слушать эталон", earYourNote: "Слушать свою ноту", earCheck: "Проверить", earDeviation: "Отклонение",
+      earChoose: "Определите то, что вы слышите.", earPitchHelp: "Сравните эталон и свою ноту, затем настройте её на слух с точностью до ±3 центов. Ползунок показывает изменение от начальной высоты.",
+      earTarget: "Слушать эталон", earYourNote: "Слушать свою ноту", earCheck: "Проверить", earDeviation: "Изменение от начальной высоты", earPitchError: "Отклонение от эталона",
       earMinusCent: "Ниже на один цент", earPlusCent: "Выше на один цент",
       earDictationHelp: "Прослушайте аккорд тоники и мелодию, затем введите ноты. Октавы не учитываются.",
       earKey: "Тональность", earEntered: "Ваши ноты", earUndo: "Отменить", earClear: "Очистить", earSubmit: "Ответить",
@@ -56,8 +56,8 @@
       earAuto: "Автоматты өту", earStart: "Жаңа тапсырма", earReplay: "Қайталау", earHint: "Ән көмегі",
       earNoHint: "Бұл интервалға арналған ән көмегі жоқ.", earHintAscending: "Жоғары бағыттағы интервал",
       earReferenceCaution: "Ән жоғары интервалды көрсетеді; тапсырма бағыты басқа болуы мүмкін.",
-      earChoose: "Естігеніңізді анықтаңыз.", earPitchHelp: "Эталонды тыңдап, нотаңызды ±3 центке дейін баптаңыз.",
-      earTarget: "Эталонды тыңдау", earYourNote: "Нотаңызды тыңдау", earCheck: "Тексеру", earDeviation: "Ауытқу",
+      earChoose: "Естігеніңізді анықтаңыз.", earPitchHelp: "Эталон мен нотаңызды салыстырып, есту арқылы ±3 центке дейін баптаңыз. Жүгірткі бастапқы биіктіктен өзгерісті көрсетеді.",
+      earTarget: "Эталонды тыңдау", earYourNote: "Нотаңызды тыңдау", earCheck: "Тексеру", earDeviation: "Бастапқы биіктіктен өзгеріс", earPitchError: "Эталоннан ауытқу",
       earMinusCent: "Бір центке төмен", earPlusCent: "Бір центке жоғары",
       earDictationHelp: "Тоника аккорды мен әуенді тыңдап, ноталарды енгізіңіз. Октавалар есептелмейді.",
       earKey: "Тональдік", earEntered: "Сіздің ноталарыңыз", earUndo: "Болдырмау", earClear: "Тазалау", earSubmit: "Жауап беру",
@@ -269,7 +269,7 @@
       if (q.direction === "descending") notes.reverse();
       return notes.map((midi, index) => ({ midi, offset: index * beat, duration: beat * 0.88, gain: 0.55 }));
     }
-    if (q.mode === "pitch") return [{ midi: q.root + Number(choice) / 100, offset: 0, duration: 1, gain: 0.65 }];
+    if (q.mode === "pitch") return [{ midi: q.root + EarTrainingEngine.pitchDeviation(q, Number(choice)) / 100, offset: 0, duration: 1, gain: 0.65 }];
     return choice.split(",").filter((note) => note !== "").map((note, index) => ({
       midi: q.root + ((Number(note) - q.root % 12 + 12) % 12), offset: index * beat, duration: beat * 0.85, gain: 0.55
     }));
@@ -291,7 +291,7 @@
   }
   /** @param {EarQuestion} q */
   function correctChoice(q) {
-    return q.mode === "pitch" ? "0" : q.mode === "dictation" ? q.notes.join(",") : q.answer;
+    return q.mode === "pitch" ? String(-q.initialCents) : q.mode === "dictation" ? q.notes.join(",") : q.answer;
   }
   /** @param {EarQuestion} q */
   function correctEvents(q) {
@@ -358,6 +358,7 @@
     const showFormula = q.mode === "interval" || q.mode === "chord" || q.mode === "scale";
     if (!correctResult) appendText(card, `${t("earYourChoice")}: ${choiceLabel(q, selected)}${showFormula ? ` — ${t("earFormula")}: ${formula(q, selected)}` : ""}`);
     appendText(card, `${t("earCorrectAnswer")}: ${choiceLabel(q, correct)}${showFormula ? ` — ${t("earFormula")}: ${formula(q, correct)}` : ""}`);
+    if (q.mode === "pitch") appendText(card, `${t("earPitchError")}: ${choiceLabel(q, String(EarTrainingEngine.pitchDeviation(q, Number(selected))))}`);
     if (!correctResult) {
       const chosenStep = EarTrainingEngine.intervalNames.indexOf(selected);
       appendText(card, q.mode === "interval" && chosenStep !== q.interval
@@ -431,6 +432,9 @@
     renderSummary();
     $("earCentsValue").textContent = `${Number($("earCents").value) > 0 ? "+" : ""}${$("earCents").value} ¢`;
     $("earCheck").disabled = answered;
+    $("earCents").disabled = answered;
+    $("earMinus").disabled = answered;
+    $("earPlus").disabled = answered;
     $("earEntered").textContent = `${t("earEntered")}: ${entered.map((note) => names[note]).join(" · ") || "—"} (${entered.length}/${question && question.mode === "dictation" ? question.notes.length : 0})`;
     $("earKeyboard").querySelectorAll("button").forEach((button) => { button.disabled = answered; });
     $("earUndo").disabled = answered;
@@ -453,7 +457,7 @@
     entered = [];
     feedback = "";
     hint = false;
-    $("earCents").value = String(question.initialCents);
+    $("earCents").value = "0";
     render();
     const animated = [$("earQuestion"), $("earAnswers"), $("earPitchControls"), $("earDictationControls")];
     animated.forEach((element) => element.classList.remove("ear-enter"));
@@ -504,9 +508,11 @@
   }));
   $("earTarget").addEventListener("click", () => { if (question) play(question.events); });
   $("earYourNote").addEventListener("click", () => {
-    if (question) play([{ midi: question.root + Number($("earCents").value) / 100, offset: 0, duration: 1, gain: 0.65 }]);
+    if (question) play(choiceEvents(question, $("earCents").value));
   });
-  $("earCheck").addEventListener("click", () => grade(Math.abs(Number($("earCents").value)) <= 3, $("earCents").value));
+  $("earCheck").addEventListener("click", () => {
+    if (question) grade(Math.abs(EarTrainingEngine.pitchDeviation(question, Number($("earCents").value))) <= 3, $("earCents").value);
+  });
   names.forEach((name, pitchClass) => {
     const button = document.createElement("button");
     button.type = "button";
