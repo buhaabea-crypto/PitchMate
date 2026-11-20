@@ -1,102 +1,8 @@
-const MIN_FREQUENCY = 15;
-const MAX_FREQUENCY = 8000;
-const MIN_RMS = 0.003;
-const QUIET_THRESHOLD = 0.008;
-const BUFFER_SIZE = 4096;
-const EMA_ALPHA = 0.18;
-const VISUAL_SMOOTHING_FACTOR = 0.2;
-const CENTS_WINDOW_SIZE = 3;
-const LOW_PASS_MAX_FREQUENCY = 4000;
-const AUDIO_LOW_PASS_FREQUENCY = 8000;
-const NOTE_CONFIRMATION_FRAMES = 2;
+const BUFFER_SIZE = 8192;
 const NOTE_HOLD_TIME = 1500;
 const DEFAULT_REFERENCE_FREQUENCY = 440;
 
-const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-class PitchSmoother {
-  constructor({ rmsThreshold = 0.008, windowSize = 3, alpha = 0.42, deadbandCents = 1 } = {}) {
-	this.rmsThreshold = rmsThreshold;
-	this.windowSize = windowSize;
-	this.alpha = alpha;
-	this.deadbandCents = deadbandCents;
-	this.frequencyWindow = [];
-	this.smoothedFrequency = null;
-	this.lockedFrequency = null;
-	  this.lastAcceptedTime = 0;
-  }
-
-	update(rawFrequency, audioBuffer, sampleRate) {
-	const rms = calculateRms(audioBuffer);
-	const clarity = this.getClarity(rawFrequency, audioBuffer, sampleRate);
-	if (rms < this.rmsThreshold || clarity < 0.12 || !Number.isFinite(rawFrequency) || rawFrequency <= 0) {
-	  return { smoothedFrequency: null, isSignalActive: false, cents: null };
-	}
-
-	const now = performance.now();
-	if (this.smoothedFrequency !== null && now - this.lastAcceptedTime < 150 && this.isOctaveJump(rawFrequency)) {
-	  return { smoothedFrequency: this.lockedFrequency, isSignalActive: true, cents: this.getCents(this.lockedFrequency) };
-	}
-
-	this.frequencyWindow.push(rawFrequency);
-	if (this.frequencyWindow.length > this.windowSize) this.frequencyWindow.shift();
-
-	const medianFrequency = this.getMedian(this.frequencyWindow);
-	const adaptiveAlpha = this.getAdaptiveAlpha(medianFrequency);
-	this.smoothedFrequency = this.smoothedFrequency === null
-	  ? medianFrequency
-		: adaptiveAlpha * medianFrequency + (1 - adaptiveAlpha) * this.smoothedFrequency;
-
-	const targetFrequency = frequencyToNote(this.smoothedFrequency)?.targetFreq;
-	const cents = this.getCents(this.smoothedFrequency);
-	if (Math.abs(cents) <= this.deadbandCents) {
-	  this.lockedFrequency = targetFrequency;
-	} else {
-	  this.lockedFrequency = this.smoothedFrequency;
-	}
-
-	this.lastAcceptedTime = now;
-	return {
-	  smoothedFrequency: this.lockedFrequency,
-	  isSignalActive: true,
-	  cents: Math.abs(cents) <= this.deadbandCents ? 0 : cents
-	};
-  }
-
-  getAdaptiveAlpha(frequency) {
-	if (frequency >= 800) return 0.2;
-	if (frequency >= 400) return 0.3;
-	return this.alpha;
-  }
-
-  getCents(frequency) {
-	if (!Number.isFinite(frequency) || frequency <= 0) return null;
-	return frequencyToNote(frequency)?.cents ?? null;
-  }
-
-  isOctaveJump(frequency) {
-	const ratio = frequency / this.smoothedFrequency;
-	return Math.abs(ratio - 0.5) < 0.06 || Math.abs(ratio - 1.5) < 0.1 || Math.abs(ratio - 2) < 0.12;
-  }
-
-  getClarity(frequency, data, sampleRate) {
-	if (!Number.isFinite(frequency) || frequency <= 0) return 0;
-	const lag = Math.round(sampleRate / frequency);
-	if (lag < 2 || lag >= data.length) return 0;
-	let correlation = 0;
-	let energy = 0;
-	for (let i = 0; i < data.length - lag; i++) {
-	  correlation += data[i] * data[i + lag];
-	  energy += data[i] * data[i];
-	}
-	return energy > 0 ? correlation / energy : 0;
-  }
-
-  getMedian(values) {
-	const sorted = [...values].sort((a, b) => a - b);
-	return sorted[Math.floor(sorted.length / 2)];
-  }
-}
+const NOTES = MusicTheoryEngine.notes;
 
 const startButton = document.getElementById("startButton");
 const noteElement = document.getElementById("note");
@@ -109,6 +15,11 @@ const gaugeCenterElement = document.getElementById("gaugeCenter");
 const gaugeZoneElement = document.getElementById("gaugeZone");
 const inputGainElement = document.getElementById("inputGain");
 const gainValueElement = document.getElementById("gainValue");
+const smoothnessElement = document.getElementById("inputSmoothness");
+const smoothnessValueElement = document.getElementById("smoothnessValue");
+const tunerPresetElement = document.getElementById("tunerPreset");
+const tunerStringsElement = document.getElementById("tunerStrings");
+const tunerReferenceStatusElement = document.getElementById("tunerReferenceStatus");
 const resetButton = document.getElementById("resetButton");
 const referenceFrequencyElement = document.getElementById("referenceFrequency");
 const referenceFrequencyValueElement = document.getElementById("referenceFrequencyValue");
@@ -122,6 +33,8 @@ const generateButton = document.getElementById("generateButton");
 const progressionNameElement = document.getElementById("progressionName");
 const progressionRomanElement = document.getElementById("progressionRoman");
 const progressionChordsElement = document.getElementById("progressionChords");
+const generatorBoardElement = document.getElementById("generatorBoard");
+const generatorTabs = document.querySelectorAll(".generator-tab");
 const progressionDescriptionElement = document.getElementById("progressionDescription");
 const listenGeneratedButton = document.getElementById("listenGeneratedButton");
 const generatedPlaybackStatus = document.getElementById("generatedPlaybackStatus");
@@ -140,6 +53,7 @@ const languageSelect = document.getElementById("languageSelect");
 
 const translations = {
   ru: {
+	chordTones: "Ноты аккорда",
 	brandSubtitle: "музыкальная лаборатория", navTuner: "Тюнер", navTheory: "Теория", navChords: "Аккорды",
 	tunerTitle: "Хроматический тюнер", tunerDescription: "Поднесите инструмент к микрофону. Стрелка плавно реагирует на отклонение от выбранной ноты.",
 	startMicrophone: "Запустить микрофон", gaugeLabel: "Шкала отклонения в центах", signalSettings: "Настройки сигнала", smoothnessGain: "Плавность / усиление", referenceA4: "Эталон A4",
@@ -149,6 +63,7 @@ const translations = {
 	major: "Мажор", minor: "Минор", dreamy: "Мечтательное", sad: "Грустное", energetic: "Энергичное", melancholic: "Меланхоличное", nostalgic: "Ностальгическое", dark: "Тёмное", tonic: "Тоника", mode: "Лад", mood: "Настроение", roman: "Символические ступени", chordNames: "Буквенные аккорды", lightTheme: "☀ Светлая тема", darkTheme: "☾ Тёмная тема", makeMinor: "Сделать минорным", restoreMajor: "Вернуть E мажор", theoryCard1Title: "1. 12 нот и октава", theoryCard1Description: "Нажмите на клавишу, чтобы услышать ноту. Белые клавиши подписаны буквами, чёрные — диезами.", theoryCard2Title: "2. Тон и полутон", theoryCard2Description: "Полутон — расстояние до соседней клавиши или соседнего лада.", theoryCard3Title: "3. Скелет гаммы", theoryCard3Description: "Переключите лад и наблюдайте, как меняются расстояния между ступенями.", theoryCard4Title: "4. Конструктор аккорда", theoryCard4Description: "Третья ступень определяет характер трезвучия. Опустите G# на полутон и услышите E minor.", theoryCard5Title: "5. Движение песни", theoryCard5Description: "Слушайте мечтательно-меланхоличный переход E — Em — A — Am.", piano: "Пианино", guitar: "Гитара", play: "Play", generatorEyebrow: "Find your next idea", progressionReady: "Прогрессия готова к прослушиванию.", playing: "Воспроизведение...", finished: "Готово.", chordProgress: "Аккорд", of: "из", descriptionSuffix: "Тональность", progressionDescription: "Мягкая и выразительная гармоническая последовательность."
   },
   en: {
+	chordTones: "Chord tones",
 	brandSubtitle: "music laboratory", navTuner: "Tuner", navTheory: "Theory", navChords: "Chords",
 	tunerTitle: "Chromatic tuner", tunerDescription: "Bring your instrument close to the microphone. The needle smoothly reacts to the selected note.",
 	startMicrophone: "Start microphone", gaugeLabel: "Cents deviation scale", signalSettings: "Signal settings", smoothnessGain: "Smoothness / gain", referenceA4: "A4 reference",
@@ -158,6 +73,7 @@ const translations = {
 	major: "Major", minor: "Minor", dreamy: "Dreamy", sad: "Sad", energetic: "Energetic", melancholic: "Melancholic", nostalgic: "Nostalgic", dark: "Dark", tonic: "Key", mode: "Mode", mood: "Mood", roman: "Roman numerals", chordNames: "Chord names", lightTheme: "☀ Light mode", darkTheme: "☾ Dark mode", makeMinor: "Make minor", restoreMajor: "Restore E major", theoryCard1Title: "1. 12 notes and an octave", theoryCard1Description: "Click a key to hear the note. White keys are labeled with letters, black keys with sharps.", theoryCard2Title: "2. Tone and semitone", theoryCard2Description: "A semitone is the distance to the neighboring key or fret.", theoryCard3Title: "3. Scale structure", theoryCard3Description: "Switch the mode and watch the distances between scale degrees change.", theoryCard4Title: "4. Chord builder", theoryCard4Description: "The third defines the character of a triad. Lower G# by a semitone to hear E minor.", theoryCard5Title: "5. Song movement", theoryCard5Description: "Listen to the dreamy, melancholic transition E — Em — A — Am.", piano: "Piano", guitar: "Guitar", play: "Play", generatorEyebrow: "Find your next idea", progressionReady: "Progression ready to play.", playing: "Playing...", finished: "Done.", chordProgress: "Chord", of: "of", descriptionSuffix: "Key", progressionDescription: "A smooth and expressive harmonic progression."
   },
   kk: {
+	chordTones: "Аккорд ноталары",
 	brandSubtitle: "музыкалық зертхана", navTuner: "Тюнер", navTheory: "Теория", navChords: "Аккордтар",
 	tunerTitle: "Хроматикалық тюнер", tunerDescription: "Аспапты микрофонға жақындатыңыз. Көрсеткі таңдалған нотаға ауытқуды бірқалыпты көрсетеді.",
 	startMicrophone: "Микрофонды іске қосу", gaugeLabel: "Цент ауытқу шкаласы", signalSettings: "Сигнал баптаулары", smoothnessGain: "Тегістік / күшейту", referenceA4: "A4 эталоны",
@@ -167,6 +83,37 @@ const translations = {
 	major: "Мажор", minor: "Минор", dreamy: "Армандай", sad: "Мұңды", energetic: "Қуатты", melancholic: "Мұңлы", nostalgic: "Ностальгиялық", dark: "Қараңғы", tonic: "Тоника", mode: "Лад", mood: "Көңіл күй", roman: "Рим цифрлары", chordNames: "Аккорд атаулары", lightTheme: "☀ Ашық режим", darkTheme: "☾ Қараңғы режим", makeMinor: "Минор жасау", restoreMajor: "E мажорын қайтару", theoryCard1Title: "1. 12 нота және октава", theoryCard1Description: "Нотаны есту үшін пернені басыңыз. Ақ пернелер әріптермен, қара пернелер диездермен белгіленген.", theoryCard2Title: "2. Тон және жарты тон", theoryCard2Description: "Жарты тон — көрші перне немесе лад арасындағы қашықтық.", theoryCard3Title: "3. Гамма құрылымы", theoryCard3Description: "Ладты ауыстырып, сатылар арасындағы қашықтықтардың өзгеруін көріңіз.", theoryCard4Title: "4. Аккорд құрастырушы", theoryCard4Description: "Үшінші саты үшдыбыстың сипатын анықтайды. E minor дыбысын есту үшін G# нотасын жарты тонға төмендетіңіз.", theoryCard5Title: "5. Ән қозғалысы", theoryCard5Description: "E — Em — A — Am армандайтын, мұңды ауысуын тыңдаңыз.", piano: "Пианино", guitar: "Гитара", play: "Ойнату", generatorEyebrow: "Келесі идеяңызды табыңыз", progressionReady: "Прогрессия тыңдауға дайын.", playing: "Ойнатылуда...", finished: "Дайын.", chordProgress: "Аккорд", of: "ішінен", descriptionSuffix: "Тональдік", progressionDescription: "Жұмсақ әрі әсерлі гармониялық прогрессия."
   }
 };
+
+Object.assign(translations.ru, {
+  tunerTuning: "Строй", chromatic: "Хроматический", standardTuning: "Стандартный E",
+  referenceStrings: "Эталонные звуки струн", signalGain: "Усиление", smoothness: "Плавность",
+  tuneHigher: "Выше ↑", tuneLower: "Ниже ↓", audioError: "Не удалось воспроизвести эталонный звук.",
+  instrumentAudioError: "Не удалось воспроизвести звук инструмента.",
+  microphoneUnsupported: "Браузер не поддерживает доступ к микрофону.", webAudioUnsupported: "Web Audio API не поддерживается браузером.",
+  microphoneDenied: "Доступ к микрофону запрещён. Разрешите микрофон в настройках сайта.",
+  microphoneNotFound: "Микрофон не найден. Подключите микрофон и повторите попытку.",
+  microphoneInUse: "Микрофон занят другой программой.", microphoneError: "Ошибка микрофона"
+});
+Object.assign(translations.en, {
+  tunerTuning: "Tuning", chromatic: "Chromatic", standardTuning: "Standard E",
+  referenceStrings: "Reference string tones", signalGain: "Gain", smoothness: "Smoothness",
+  tuneHigher: "Higher ↑", tuneLower: "Lower ↓", audioError: "Could not play the reference tone.",
+  instrumentAudioError: "Could not play the instrument sound.",
+  microphoneUnsupported: "Microphone access is not supported by this browser.", webAudioUnsupported: "Web Audio API is not supported by this browser.",
+  microphoneDenied: "Microphone access was denied. Allow it in the site settings.",
+  microphoneNotFound: "No microphone found. Connect a microphone and try again.",
+  microphoneInUse: "The microphone is in use by another application.", microphoneError: "Microphone error"
+});
+Object.assign(translations.kk, {
+  tunerTuning: "Бұрау", chromatic: "Хроматикалық", standardTuning: "Стандартты E",
+  referenceStrings: "Ішектердің эталондық дыбыстары", signalGain: "Күшейту", smoothness: "Тегістік",
+  tuneHigher: "Жоғары ↑", tuneLower: "Төмен ↓", audioError: "Эталондық дыбысты ойнату мүмкін болмады.",
+  instrumentAudioError: "Аспап дыбысын ойнату мүмкін болмады.",
+  microphoneUnsupported: "Бұл браузерде микрофонға қол жеткізу мүмкін емес.", webAudioUnsupported: "Бұл браузерде Web Audio API қолжетімсіз.",
+  microphoneDenied: "Микрофонға рұқсат берілмеді. Сайт баптауларында рұқсат беріңіз.",
+  microphoneNotFound: "Микрофон табылмады. Микрофонды қосып, қайталап көріңіз.",
+  microphoneInUse: "Микрофонды басқа бағдарлама пайдаланып жатыр.", microphoneError: "Микрофон қатесі"
+});
 
 let currentLanguage = localStorage.getItem("pitchmate-language") || "ru";
 if (!translations[currentLanguage]) currentLanguage = "ru";
@@ -182,6 +129,7 @@ function updateDynamicText() {
   }
   if (frequencyElement.textContent.includes("—")) frequencyElement.textContent = `${t("frequency")}: —`;
   if (centsElement.textContent.includes("—")) centsElement.textContent = `${t("cents")}: —`;
+  if (statusElement.dataset.initial === "true") statusElement.textContent = `${t("range")}: C0–B8`;
 }
 
 function applyTranslations() {
@@ -196,7 +144,9 @@ function applyTranslations() {
   updateReferenceFrequencyDisplay();
   updateThemeToggle();
   renderScale(scaleToggleElement?.dataset.mode || "major");
-  renderIntervalView(document.querySelector(".theory-tab.active")?.dataset.interval || "piano");
+	renderIntervalView(document.querySelector('.theory-tab[data-interval].active')?.dataset.interval || "piano");
+  renderTunerStrings();
+  updateDynamicText();
 }
 
 languageSelect?.addEventListener("change", () => {
@@ -228,31 +178,32 @@ themeToggle?.addEventListener("click", () => {
 
 let audioContext = null;
 let analyser = null;
-let lowPassFilterNode = null;
 let inputBuffer = null;
-let filteredBuffer = null;
-let movingAverageBuffer = null;
-let centeredBuffer = null;
-let smoothedCents = null;
-let currentMidi = null;
-let candidateMidi = null;
-let candidateFrames = 0;
 let lastValidPitchTime = 0;
 let targetCents = 0;
 let displayCents = 0;
-let centsWindow = [];
 let targetNote = "—";
 let targetFrequency = null;
+let targetMidi = null;
+let signalActive = false;
+let stableSince = null;
+let isTuned = false;
+let tunerMessageKey = "listening";
+let lastVisualTime = null;
+let lastAnalysisTime = 0;
 let inputGainNode = null;
 let targetGain = 1;
 let currentGain = 1;
 let generatedProgression = [];
+let generatedChordNames = [];
+let selectedProgressionChordIndex = 0;
+let generatorInstrument = "piano";
 let generatedPlaybackTimer = null;
 let referenceFrequency = DEFAULT_REFERENCE_FREQUENCY;
-const theoryInstruments = new Map();
-const instrumentLoading = new Map();
-let soundfontWarningShown = false;
-const pitchSmoother = new PitchSmoother();
+let instrumentPlayer = null;
+const instrumentChannelVersions = new Map();
+const pitchDetector = new YinPitchDetector();
+const pitchTracker = new PitchTracker();
 
 function updateReferenceFrequencyDisplay() {
   const formattedFrequency = Number.isInteger(referenceFrequency)
@@ -272,47 +223,81 @@ inputGainElement?.addEventListener("input", () => {
   targetGain = Number(inputGainElement.value) / 100;
   gainValueElement.textContent = `${inputGainElement.value}%`;
 });
+smoothnessElement?.addEventListener("input", () => {
+  smoothnessValueElement.textContent = `${smoothnessElement.value}%`;
+});
+tunerPresetElement?.addEventListener("change", () => {
+  renderTunerStrings();
+  stableSince = null;
+  isTuned = false;
+  if (signalActive && targetFrequency !== null) updatePitch(targetFrequency, performance.now());
+});
 referenceFrequencyElement?.addEventListener("input", () => {
   const nextReference = Number(referenceFrequencyElement.value);
   if (!Number.isFinite(nextReference) || nextReference < 400 || nextReference > 480) return;
   referenceFrequency = nextReference;
 	updateReferenceFrequencyDisplay();
-  currentMidi = null;
-  candidateMidi = null;
-  candidateFrames = 0;
-  smoothedCents = null;
+  stableSince = null;
+  isTuned = false;
+  if (signalActive && targetFrequency !== null) updatePitch(targetFrequency, performance.now());
 });
 resetButton?.addEventListener("click", () => {
   inputGainElement.value = "100";
   targetGain = 1;
   gainValueElement.textContent = "100%";
+  smoothnessElement.value = "50";
+  smoothnessValueElement.textContent = "50%";
+  tunerPresetElement.value = "chromatic";
+  renderTunerStrings();
   referenceFrequency = DEFAULT_REFERENCE_FREQUENCY;
   referenceFrequencyElement.value = String(DEFAULT_REFERENCE_FREQUENCY);
 	updateReferenceFrequencyDisplay();
-  currentMidi = null;
-  candidateMidi = null;
-  candidateFrames = 0;
-  smoothedCents = null;
+  stableSince = null;
+  isTuned = false;
+  if (signalActive && targetFrequency !== null) updatePitch(targetFrequency, performance.now());
 });
 
 navButtons.forEach((button) => {
   button.addEventListener("click", () => {
 	navButtons.forEach((item) => item.classList.toggle("active", item === button));
 	sections.forEach((section) => section.classList.toggle("active", section.id === button.dataset.section));
+	window.trackEvent("tab_switch", { tab_name: button.dataset.section });
   });
 });
 
 generateButton?.addEventListener("click", generateProgression);
 listenGeneratedButton?.addEventListener("click", playGeneratedProgression);
+progressionChordsElement?.addEventListener("click", (event) => {
+  const button = event.target.closest(".progression-chord");
+  if (!button || !progressionChordsElement.contains(button)) return;
+  selectedProgressionChordIndex = Number(button.dataset.index);
+  progressionChordsElement.querySelectorAll(".progression-chord").forEach((chordButton, index) => {
+	const isSelected = index === selectedProgressionChordIndex;
+	chordButton.classList.toggle("active", isSelected);
+	chordButton.setAttribute("aria-pressed", String(isSelected));
+  });
+  renderGeneratorBoard();
+});
+generatorTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+	generatorInstrument = tab.dataset.instrument;
+	generatorTabs.forEach((item) => {
+	  const isSelected = item === tab;
+	  item.classList.toggle("active", isSelected);
+	  item.setAttribute("aria-pressed", String(isSelected));
+	});
+	renderGeneratorBoard();
+  });
+});
 initializeTheoryVisuals();
 
 function initializeTheoryVisuals() {
   createPianoKeyboard();
   renderIntervalView("piano");
   renderScale("major");
-  document.querySelectorAll(".theory-tab").forEach((tab) => {
+	document.querySelectorAll('.theory-tab[data-interval]').forEach((tab) => {
 	tab.addEventListener("click", () => {
-	  document.querySelectorAll(".theory-tab").forEach((item) => item.classList.toggle("active", item === tab));
+	  document.querySelectorAll('.theory-tab[data-interval]').forEach((item) => item.classList.toggle("active", item === tab));
 	  renderIntervalView(tab.dataset.interval);
 	  playIntervalExample(tab.dataset.interval);
 	});
@@ -329,61 +314,33 @@ function getTheoryAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextClass) return null;
   if (!audioContext) audioContext = new AudioContextClass();
-  if (audioContext.state === "suspended") audioContext.resume();
   return audioContext;
 }
 
-function playTone(frequency, duration = 0.65, startTime = null, instrumentName = "acoustic_grand_piano") {
-  const context = getTheoryAudioContext();
-  if (!context) return;
-	const start = startTime ?? context.currentTime;
-	const midi = Math.round(69 + 12 * Math.log2(frequency / referenceFrequency));
-  loadTheoryInstrument(instrumentName).then((instrument) => {
-	if (instrument) {
-	  instrument.play(midi, Math.max(start, context.currentTime), { duration, gain: 0.9 });
-	} else {
-	  playSynthFallback(frequency, duration, start, instrumentName);
-	}
-  });
+function stopInstrumentChannel(channel) {
+  instrumentChannelVersions.set(channel, (instrumentChannelVersions.get(channel) || 0) + 1);
+  if (instrumentPlayer) instrumentPlayer.stop(channel);
 }
 
-function loadTheoryInstrument(instrumentName) {
-  if (theoryInstruments.has(instrumentName)) return Promise.resolve(theoryInstruments.get(instrumentName));
-  if (instrumentLoading.has(instrumentName)) return instrumentLoading.get(instrumentName);
-  if (!window.Soundfont || !audioContext) return Promise.resolve(null);
-
-  const loading = Soundfont.instrument(audioContext, instrumentName, {
-	soundfont: "FluidR3_GM",
-	nameToUrl: (name, soundfont, format) => `https://gleitz.github.io/midi-js-soundfonts/${soundfont}/${name}-${format}.js`
-  }).then((instrument) => {
-	theoryInstruments.set(instrumentName, instrument);
-	instrumentLoading.delete(instrumentName);
-	return instrument;
-  }).catch((error) => {
-	instrumentLoading.delete(instrumentName);
-	if (!soundfontWarningShown) {
-	  soundfontWarningShown = true;
-	  console.warn("Не удалось загрузить сэмплы инструмента, используется резервный синтез.", error);
-	}
-	return null;
-  });
-  instrumentLoading.set(instrumentName, loading);
-  return loading;
-}
-
-function playSynthFallback(frequency, duration, start, instrumentName) {
-  const context = audioContext;
-  if (!context) return;
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-	oscillator.type = instrumentName === "acoustic_guitar_steel" ? "sine" : "triangle";
-  oscillator.frequency.value = frequency;
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.18, start + 0.025);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start(start);
-  oscillator.stop(start + duration + 0.03);
+async function playInstrument(instrument, events, status = document.getElementById("theoryAudioStatus"), channel = null) {
+  try {
+    if (channel) stopInstrumentChannel(channel);
+    const version = channel ? instrumentChannelVersions.get(channel) : 0;
+    const context = getTheoryAudioContext();
+    if (!context) throw new Error("Web Audio API unavailable");
+    if (context.state === "suspended") await context.resume();
+    if (channel && instrumentChannelVersions.get(channel) !== version) return null;
+    if (!instrumentPlayer || instrumentPlayer.context !== context) {
+      instrumentPlayer = new InstrumentPlayer(context, InstrumentSampleData);
+    }
+    const start = await instrumentPlayer.play(instrument, events, referenceFrequency, channel);
+    status.textContent = "";
+    return start;
+  } catch (error) {
+    console.error("Could not play instrument:", error);
+    status.textContent = t("instrumentAudioError");
+    return null;
+  }
 }
 
 function createPianoKeyboard() {
@@ -399,7 +356,7 @@ function createPianoKeyboard() {
 
 function playKeyboardNote(semitone, element) {
   element.classList.add("active");
-  playTone(midiToFrequency(60 + semitone));
+  playInstrument("piano", [{ midi: 60 + semitone, offset: 0, duration: 0.85, gain: 0.7 }]);
   window.setTimeout(() => element.classList.remove("active"), 180);
 }
 
@@ -413,12 +370,8 @@ function renderIntervalView(type) {
 }
 
 function playIntervalExample(type) {
-  const context = getTheoryAudioContext();
-  if (!context) return;
-  const start = context.currentTime;
   const firstMidi = type === "guitar" ? 60 : 64;
-	playTone(midiToFrequency(firstMidi), 0.45, start, type === "guitar" ? "acoustic_guitar_steel" : "acoustic_grand_piano");
-  playTone(midiToFrequency(firstMidi + 1), 0.45, start + 0.48, type === "guitar" ? "acoustic_guitar_steel" : "acoustic_grand_piano");
+  playInstrument(type, [firstMidi, firstMidi + 1].map((midi, index) => ({ midi, offset: index * 0.48, duration: 0.45, gain: 0.7 })));
 }
 
 function renderScale(mode) {
@@ -440,239 +393,136 @@ function toggleMinorChord() {
   builderThirdElement.classList.toggle("changed", !isMinor);
 	minorChordButton.textContent = isMinor ? t("makeMinor") : t("restoreMajor");
   const notes = isMinor ? ["E", "G"] : ["E", "G#"];
-  notes.forEach((note, index) => playTone(midiToFrequency({ E: 64, G: 67, "G#": 68 }[note]), 0.7, (getTheoryAudioContext()?.currentTime ?? 0) + index * 0.05));
-  playTone(midiToFrequency(71), 0.7, (getTheoryAudioContext()?.currentTime ?? 0) + 0.1);
+  const midis = [...notes.map((note) => ({ E: 64, G: 67, "G#": 68 }[note])), 71];
+  playInstrument("piano", midis.map((midi, index) => ({ midi, offset: index * 0.05, duration: 0.7, gain: 0.35 })));
 }
 
-function playProgression() {
+async function playProgression() {
   const cards = [...playerChordsElement.querySelectorAll(".player-chord")];
   const frequencies = [[64, 68, 71], [64, 67, 71], [69, 73, 76], [69, 72, 76]];
-  const context = getTheoryAudioContext();
-  if (!context) return;
-  const start = context.currentTime + 0.05;
+  const events = frequencies.flatMap((chord, index) => chord.map((midi) => ({ midi, offset: index * 0.9, duration: 0.78, gain: 0.35 })));
+  const start = await playInstrument("piano", events);
+  if (start === null) return;
+  const delay = Math.max(0, (start - audioContext.currentTime) * 1000);
   cards.forEach((card, index) => {
-	const time = start + index * 0.9;
 	window.setTimeout(() => {
 	  cards.forEach((item) => item.classList.remove("active"));
 	  card.classList.add("active");
-	}, index * 900);
-	frequencies[index].forEach((midi) => playTone(midiToFrequency(midi), 0.78, time));
+	}, delay + index * 900);
   });
-  window.setTimeout(() => cards.forEach((card) => card.classList.remove("active")), cards.length * 900);
+  window.setTimeout(() => cards.forEach((card) => card.classList.remove("active")), delay + cards.length * 900);
 }
 
 async function startTuner() {
+  let stream = null;
+  delete statusElement.dataset.initial;
+  startButton.disabled = true;
   try {
 	if (!navigator.mediaDevices?.getUserMedia) {
-	  throw new Error("Браузер не поддерживает доступ к микрофону");
+	  throw new Error(t("microphoneUnsupported"));
 	}
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+	if (!AudioContextClass) throw new Error(t("webAudioUnsupported"));
 
-	const stream = await navigator.mediaDevices.getUserMedia({
+	if (!audioContext) audioContext = new AudioContextClass();
+	await audioContext.resume();
+	stream = await navigator.mediaDevices.getUserMedia({
 	  audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
 	});
-	const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-	if (!AudioContextClass) throw new Error("Web Audio API не поддерживается браузером");
-
-	audioContext = new AudioContextClass();
-	await audioContext.resume();
 	const source = audioContext.createMediaStreamSource(stream);
-	lowPassFilterNode = audioContext.createBiquadFilter();
-	lowPassFilterNode.type = "lowpass";
-	lowPassFilterNode.frequency.value = Math.min(AUDIO_LOW_PASS_FREQUENCY, audioContext.sampleRate * 0.45);
-	lowPassFilterNode.Q.value = 0.7;
 	analyser = audioContext.createAnalyser();
 	analyser.fftSize = BUFFER_SIZE;
 	analyser.smoothingTimeConstant = 0;
 	inputBuffer = new Float32Array(BUFFER_SIZE);
-  filteredBuffer = new Float32Array(BUFFER_SIZE);
-  movingAverageBuffer = new Float32Array(BUFFER_SIZE);
-	centeredBuffer = new Float32Array(BUFFER_SIZE);
 	inputGainNode = audioContext.createGain();
 	inputGainNode.gain.value = currentGain;
-	source.connect(inputGainNode);
-	inputGainNode.connect(lowPassFilterNode);
-	lowPassFilterNode.connect(analyser);
-
-	const silentGain = audioContext.createGain();
-	silentGain.gain.value = 0;
-	analyser.connect(silentGain);
-	silentGain.connect(audioContext.destination);
-
-	startButton.disabled = true;
-	statusElement.textContent = "Слушаю микрофон...";
-  requestAnimationFrame(updateVisuals);
+	source.connect(inputGainNode).connect(analyser);
+	window.trackEvent("tuner_start");
+	tunerMessageKey = "listening";
+	statusElement.textContent = t(tunerMessageKey);
+	requestAnimationFrame(updateVisuals);
 	requestAnimationFrame(processAudio);
   } catch (error) {
+	if (stream) stream.getTracks().forEach((track) => track.stop());
 	startButton.disabled = false;
 	statusElement.textContent = getMicrophoneError(error);
 	console.error(error);
   }
 }
 
-function processAudio() {
+function processAudio(now) {
   if (!analyser || !audioContext) return;
-  analyser.getFloatTimeDomainData(inputBuffer);
-  lowPassFilter(inputBuffer, filteredBuffer, audioContext.sampleRate, LOW_PASS_MAX_FREQUENCY);
-	applyMovingAverage(filteredBuffer, 3);
-	const rms = calculateRms(filteredBuffer);
-	if (rms < QUIET_THRESHOLD) {
-	  handleQuietSignal(rms);
-	  requestAnimationFrame(processAudio);
-	  return;
-	}
-	const rawFrequency = detectFrequency(filteredBuffer, audioContext.sampleRate, centeredBuffer);
-  const smoothed = pitchSmoother.update(rawFrequency, filteredBuffer, audioContext.sampleRate);
-
-	if (!smoothed.isSignalActive) {
-	keepLastNote("Сигнал есть, определяю частоту...");
-  } else {
-	updatePitch(smoothed.smoothedFrequency);
+  if (now - lastAnalysisTime >= 50) {
+    lastAnalysisTime = now;
+    analyser.getFloatTimeDomainData(inputBuffer);
+    const result = pitchDetector.detect(inputBuffer, audioContext.sampleRate);
+    const frequency = result.frequency === null ? null : pitchTracker.update(result.frequency, result.rms, now);
+    if (frequency === null) {
+      if (result.frequency !== null && pitchTracker.rejectedOctave) lastValidPitchTime = now;
+      handleMissingSignal(now, result.rms < pitchDetector.noiseGate ? "waitingNote" : "signalDetecting");
+    } else {
+      updatePitch(frequency, now);
+    }
   }
   requestAnimationFrame(processAudio);
 }
 
-function applyMovingAverage(buffer, radius) {
-  for (let i = 0; i < buffer.length; i++) {
-	let sum = 0;
-	let count = 0;
-	const start = Math.max(0, i - radius);
-	const end = Math.min(buffer.length - 1, i + radius);
-	for (let j = start; j <= end; j++) {
-	  sum += buffer[j];
-	  count++;
-	}
-	movingAverageBuffer[i] = sum / count;
+function updatePitch(frequency, now) {
+  const pitch = frequencyToNote(frequency);
+  if (!pitch) {
+    handleMissingSignal(now, "signalDetecting");
+    return;
   }
-  buffer.set(movingAverageBuffer);
-}
-
-function lowPassFilter(input, output, sampleRate, cutoffFrequency) {
-  const alpha = (2 * Math.PI * cutoffFrequency / sampleRate) /
-	(1 + 2 * Math.PI * cutoffFrequency / sampleRate);
-  output[0] = alpha * input[0];
-  for (let i = 1; i < input.length; i++) {
-	output[i] = output[i - 1] + alpha * (input[i] - output[i - 1]);
+  const strings = MusicTheoryEngine.tunings[tunerPresetElement.value];
+  const midi = strings ? strings.reduce((closest, candidate) =>
+    Math.abs(1200 * Math.log2(frequency / midiToFrequency(candidate, referenceFrequency))) <
+    Math.abs(1200 * Math.log2(frequency / midiToFrequency(closest, referenceFrequency))) ? candidate : closest
+  ) : pitch.midi;
+  const cents = 1200 * Math.log2(frequency / midiToFrequency(midi, referenceFrequency));
+  if (midi !== targetMidi || Math.abs(cents) > 3) {
+    stableSince = null;
+    isTuned = false;
   }
-}
-
-function detectFrequency(data, sampleRate, centered) {
-  let mean = 0;
-  for (let i = 0; i < data.length; i++) mean += data[i];
-  mean /= data.length;
-
-  let power = 0;
-  for (let i = 0; i < data.length; i++) {
-	centered[i] = data[i] - mean;
-	power += centered[i] * centered[i];
+  if (Math.abs(cents) <= 3) {
+    if (stableSince === null) stableSince = now;
+    isTuned = now - stableSince >= 400;
   }
-  if (Math.sqrt(power / data.length) < MIN_RMS) return -1;
-
-  const minLag = Math.max(2, Math.floor(sampleRate / MAX_FREQUENCY));
-  const maxLag = Math.min(Math.floor(sampleRate / MIN_FREQUENCY), Math.floor(data.length / 2));
-  let bestLag = -1;
-  let bestScore = -Infinity;
-  const scores = new Float32Array(maxLag + 1);
-
-  for (let lag = minLag; lag <= maxLag; lag++) {
-	let difference = 0;
-	for (let i = 0; i < data.length - lag; i++) {
-	  const delta = centered[i] - centered[i + lag];
-	  difference += delta * delta;
-	}
-	const score = 1 - difference / (2 * power);
-	scores[lag] = score;
-	if (score > bestScore) {
-	  bestScore = score;
-	  bestLag = lag;
-	}
-  }
-
-	const significantThreshold = Math.max(0.05, bestScore * 0.92);
-  for (let lag = minLag + 1; lag < maxLag; lag++) {
-	if (scores[lag] >= significantThreshold && scores[lag] >= scores[lag - 1] && scores[lag] >= scores[lag + 1]) {
-	  bestLag = lag;
-	  bestScore = scores[lag];
-	  break;
-	}
-  }
-
-  if (bestLag < 1 || bestScore < 0.05) return -1;
-  const left = lagScore(centered, power, bestLag - 1);
-  const right = lagScore(centered, power, bestLag + 1);
-  const denominator = left - 2 * bestScore + right;
-  const correction = denominator === 0 ? 0 : 0.5 * (left - right) / denominator;
-  const frequency = sampleRate / (bestLag + correction);
-  return frequency >= MIN_FREQUENCY && frequency <= MAX_FREQUENCY ? frequency : -1;
-}
-
-function lagScore(data, power, lag) {
-  if (lag < 1 || lag >= data.length) return 0;
-  let difference = 0;
-  for (let i = 0; i < data.length - lag; i++) {
-	const delta = data[i] - data[i + lag];
-	difference += delta * delta;
-  }
-  return 1 - difference / (2 * power);
-}
-
-function updatePitch(frequency) {
-	const pitch = frequencyToNote(frequency);
-  if (!pitch) return;
-  const detectedMidi = pitch.midi;
-  if (currentMidi === null) {
-	currentMidi = detectedMidi;
-	smoothedCents = null;
-  } else if (detectedMidi !== currentMidi) {
-	if (candidateMidi === detectedMidi) candidateFrames++;
-	else { candidateMidi = detectedMidi; candidateFrames = 1; }
-	if (candidateFrames >= NOTE_CONFIRMATION_FRAMES) {
-	  currentMidi = candidateMidi;
-	  candidateMidi = null;
-	  candidateFrames = 0;
-	  smoothedCents = null;
-	}
-  } else {
-	candidateMidi = null;
-	candidateFrames = 0;
-  }
-  lastValidPitchTime = Date.now();
-	renderPitch({ ...pitch, midi: currentMidi });
-}
-
-function renderPitch(pitch) {
-  const { frequency, midi } = pitch;
-	const targetFreq = midiToFrequency(midi, referenceFrequency);
-	const cents = 1200 * Math.log2(frequency / targetFreq);
-	const noteIndex = ((midi % 12) + 12) % 12;
-  const note = `${NOTES[noteIndex]}${Math.floor(midi / 12) - 1}`;
-
-	// Keep the text and measured frequency responsive; only the needle target
-  // receives the short median filter and the visual EMA below.
+  targetMidi = midi;
   targetCents = cents;
-  targetNote = note;
+  targetNote = MusicTheoryEngine.noteName(midi);
   targetFrequency = frequency;
-  lastValidPitchTime = Date.now();
+  lastValidPitchTime = now;
+  signalActive = true;
 }
 
-function updateVisuals() {
+function updateVisuals(now) {
   if (!gaugeNeedleElement) return;
 	currentGain += (targetGain - currentGain) * 0.12;
   if (inputGainNode && audioContext) {
 	inputGainNode.gain.setTargetAtTime(currentGain, audioContext.currentTime, 0.025);
   }
-  displayCents += (targetCents - displayCents) * VISUAL_SMOOTHING_FACTOR;
+  const elapsed = lastVisualTime === null ? 16.67 : Math.min(100, Math.max(0, now - lastVisualTime));
+  lastVisualTime = now;
+  const baseAlpha = 0.4 - Number(smoothnessElement.value) / 100 * 0.36;
+  const alpha = 1 - Math.pow(1 - baseAlpha, elapsed / 16.67);
+  displayCents += (targetCents - displayCents) * alpha;
   if (Math.abs(targetCents - displayCents) < 0.05) displayCents = targetCents;
 
-  const roundedCents = Math.round(displayCents);
+  const roundedCents = Math.round(targetCents);
   if (targetFrequency !== null) {
 	noteElement.textContent = targetNote;
 	frequencyElement.textContent = `${t("frequency")}: ${targetFrequency.toFixed(2)} ${currentLanguage === "ru" ? "Гц" : "Hz"}`;
 	centsElement.textContent = `${t("cents")}: ${roundedCents >= 0 ? "+" : ""}${roundedCents} ${currentLanguage === "en" ? "cents" : currentLanguage === "kk" ? "цент" : "центов"}`;
-	updateTuner(targetNote, displayCents);
-	centsElement.style.color = Math.abs(displayCents) <= 5 ? "#43a047" : "#ffca28";
-	statusElement.textContent = Math.abs(displayCents) <= 5 ? t("noteTuned") : t("tuneInstrument");
+	updateTuner(targetNote, displayCents, signalActive && isTuned);
+	centsElement.style.color = signalActive && isTuned ? "#43a047" : "";
+	if (signalActive) {
+	  statusElement.textContent = isTuned ? t("noteTuned") : stringsDirection();
+	} else {
+	  statusElement.textContent = t(tunerMessageKey);
+	}
+  } else {
+    statusElement.textContent = t(tunerMessageKey);
   }
-
   requestAnimationFrame(updateVisuals);
 }
 
@@ -703,9 +553,11 @@ function generateProgression() {
   const pattern = progressionPatterns[mode][moodSelect.value];
   const chords = pattern.roman.map((degree) => romanToChord(degree, key, mode));
 	generatedProgression = chords.map(chordNameToMidi);
+	generatedChordNames = chords;
+	selectedProgressionChordIndex = 0;
 	progressionNameElement.textContent = `${t(moodSelect.value)} • ${key} ${t(mode)}`;
   renderChordBlocks(progressionRomanElement, pattern.roman.map((degree) => `[ ${degree} ]`));
-  renderChordBlocks(progressionChordsElement, [chords.join(" — ")]);
+	renderProgressionChordButtons(chords);
 	progressionDescriptionElement.textContent = `${t(pattern.descriptionKey)} ${t("descriptionSuffix")}: ${key}.`;
   generatedPlaybackStatus.textContent = t("progressionReady");
 }
@@ -719,26 +571,26 @@ function chordNameToMidi(chord) {
   if (!match) return [];
   const root = NOTES.indexOf(match[1]);
   const rootMidi = 60 + (root < 0 ? 0 : root);
-  return [rootMidi, rootMidi + (match[2] ? 3 : 4), rootMidi + 7];
+  return MusicTheoryEngine.chords[match[2] ? "minor" : "major"].intervals.map((interval) => rootMidi + interval);
 }
 
-function playGeneratedProgression() {
+async function playGeneratedProgression() {
   if (!generatedProgression.length) generateProgression();
-  const context = getTheoryAudioContext();
-  if (!context) return;
   if (generatedPlaybackTimer) window.clearTimeout(generatedPlaybackTimer);
-  const start = context.currentTime + 0.08;
-	generatedPlaybackStatus.textContent = t("playing");
+  const events = generatedProgression.flatMap((chord, index) =>
+    chord.map((midi) => ({ midi, offset: index * 0.9, duration: 0.78, gain: 0.35 })));
+  const start = await playInstrument(generatorInstrument, events, generatedPlaybackStatus);
+  if (start === null) return;
+  const delay = Math.max(0, (start - audioContext.currentTime) * 1000);
+  generatedPlaybackStatus.textContent = t("playing");
   generatedProgression.forEach((chord, index) => {
-	const time = start + index * 0.9;
-	chord.forEach((midi) => playTone(midiToFrequency(midi), 0.78, time, "acoustic_grand_piano"));
 	generatedPlaybackTimer = window.setTimeout(() => {
 	  generatedPlaybackStatus.textContent = index === generatedProgression.length - 1 ? t("finished") : `${t("chordProgress")} ${index + 1} ${t("of")} ${generatedProgression.length}`;
-	}, index * 900);
+	}, delay + index * 900);
   });
   generatedPlaybackTimer = window.setTimeout(() => {
   generatedPlaybackStatus.textContent = t("finished");
-  }, generatedProgression.length * 900);
+  }, delay + generatedProgression.length * 900);
 }
 
 function renderChordBlocks(container, values) {
@@ -752,43 +604,220 @@ function renderChordBlocks(container, values) {
   });
 }
 
+function renderProgressionChordButtons(chords) {
+  if (!progressionChordsElement) return;
+  progressionChordsElement.innerHTML = "";
+  chords.forEach((chord, index) => {
+	const button = document.createElement("button");
+	const isSelected = index === selectedProgressionChordIndex;
+	button.type = "button";
+	button.className = `chord progression-chord${isSelected ? " active" : ""}`;
+	button.dataset.index = String(index);
+	button.setAttribute("aria-pressed", String(isSelected));
+	button.textContent = chord;
+	progressionChordsElement.appendChild(button);
+  });
+  renderGeneratorBoard();
+}
+
+function renderGeneratorBoard() {
+  if (!generatorBoardElement) return;
+  const chord = generatedProgression[selectedProgressionChordIndex] || [];
+  if (!chord.length) {
+	generatorBoardElement.replaceChildren();
+	return;
+  }
+
+  const pitchClasses = new Set(chord.map((midi) => ((midi % 12) + 12) % 12));
+  const noteNames = [...pitchClasses].map((pitchClass) => NOTES[pitchClass]);
+  const chordName = generatedChordNames[selectedProgressionChordIndex];
+  generatorBoardElement.setAttribute("aria-label", `${chordName}: ${noteNames.join(", ")}`);
+  generatorBoardElement.replaceChildren();
+
+  if (generatorInstrument === "guitar") {
+	if (window.PitchMateModules) {
+	  window.PitchMateModules.renderGeneratorGuitar(generatorBoardElement, chordName);
+	  return;
+	}
+	generatorBoardElement.appendChild(renderGuitarVoicing(chord, pitchClasses));
+	return;
+  }
+
+  const keyboard = document.createElement("div");
+  keyboard.className = "generator-piano";
+  keyboard.setAttribute("aria-hidden", "true");
+  const blackKeys = new Set([1, 3, 6, 8, 10]);
+  NOTES.forEach((note, pitchClass) => {
+	const key = document.createElement("span");
+	key.className = `generator-piano-key${blackKeys.has(pitchClass) ? " is-black" : ""}`;
+	if (pitchClasses.has(pitchClass)) key.classList.add("is-chord-tone");
+	key.textContent = note;
+	keyboard.appendChild(key);
+  });
+  generatorBoardElement.appendChild(keyboard);
+}
+
+function renderGuitarVoicing(chord, pitchClasses) {
+  const strings = [
+	{ label: "E", midi: 64 },
+	{ label: "B", midi: 59 },
+	{ label: "G", midi: 55 },
+	{ label: "D", midi: 50 },
+	{ label: "A", midi: 45 },
+	{ label: "E", midi: 40 }
+  ];
+  const voicing = findGuitarVoicing(chord);
+  const scroll = document.createElement("div");
+  const fretboard = document.createElement("div");
+  scroll.className = "generator-fretboard-scroll";
+  fretboard.className = "generator-fretboard";
+  fretboard.setAttribute("aria-hidden", "true");
+
+  const corner = document.createElement("span");
+  fretboard.appendChild(corner);
+  for (let fret = 0; fret <= 12; fret++) {
+	const label = document.createElement("span");
+	label.className = "generator-fret-label";
+	label.textContent = String(fret);
+	fretboard.appendChild(label);
+  }
+
+  strings.forEach((string, stringIndex) => {
+	const stringLabel = document.createElement("span");
+	stringLabel.className = "generator-string-label";
+	stringLabel.textContent = string.label;
+	fretboard.appendChild(stringLabel);
+	for (let fret = 0; fret <= 12; fret++) {
+	  const cell = document.createElement("span");
+	  cell.className = "generator-fret-cell";
+	  const voicingNote = voicing.find((note) => note.stringIndex === stringIndex && note.fret === fret);
+	  if (voicingNote && pitchClasses.has((string.midi + fret) % 12)) {
+		const marker = document.createElement("span");
+		marker.className = `generator-fret-marker${voicingNote.pitchClass === ((chord[0] % 12) + 12) % 12 ? " is-root" : ""}`;
+		marker.textContent = NOTES[voicingNote.pitchClass];
+		cell.appendChild(marker);
+	  }
+	  fretboard.appendChild(cell);
+	}
+  });
+  scroll.appendChild(fretboard);
+  return scroll;
+}
+
+function findGuitarVoicing(chord) {
+  const strings = [64, 59, 55, 50, 45, 40];
+  const pitchClasses = [...new Set(chord.map((midi) => ((midi % 12) + 12) % 12))];
+  let bestVoicing = [];
+  let bestScore = Infinity;
+
+  function search(toneIndex, selectedNotes) {
+	if (toneIndex === pitchClasses.length) {
+	  const frets = selectedNotes.map((note) => note.fret);
+	  const stringIndexes = selectedNotes.map((note) => note.stringIndex);
+	  const fretSpan = Math.max(...frets) - Math.min(...frets);
+	  const fretTotal = frets.reduce((total, fret) => total + fret, 0);
+	  const stringSpan = Math.max(...stringIndexes) - Math.min(...stringIndexes);
+	  const score = fretSpan * 30 + fretTotal * 3 + stringSpan;
+	  if (score < bestScore) {
+		bestScore = score;
+		bestVoicing = [...selectedNotes];
+	  }
+	  return;
+	}
+
+	const pitchClass = pitchClasses[toneIndex];
+	strings.forEach((openMidi, stringIndex) => {
+	  if (selectedNotes.some((note) => note.stringIndex === stringIndex)) return;
+	  for (let fret = 0; fret <= 12; fret++) {
+		if ((openMidi + fret) % 12 !== pitchClass) continue;
+		selectedNotes.push({ stringIndex, fret, pitchClass });
+		search(toneIndex + 1, selectedNotes);
+		selectedNotes.pop();
+	  }
+	});
+  }
+
+  search(0, []);
+  return bestVoicing;
+}
+
 function romanToChord(roman, key, mode) {
   const rootIndex = NOTES.indexOf(key);
   const accidental = roman.startsWith("b") ? -1 : roman.startsWith("#") ? 1 : 0;
   const cleanRoman = roman.replace(/^[b#]/, "");
   const degreeMap = { I: 0, II: 1, III: 2, IV: 3, V: 4, VI: 5, VII: 6 };
   const degree = degreeMap[cleanRoman.toUpperCase()];
-  const majorSteps = [0, 2, 4, 5, 7, 9, 11];
-  const minorSteps = [0, 2, 3, 5, 7, 8, 10];
-  const scale = mode === "major" ? majorSteps : minorSteps;
+  const scale = MusicTheoryEngine.scales[mode === "major" ? "major" : "naturalMinor"];
   const chordRoot = NOTES[(rootIndex + scale[degree] + accidental + 12) % 12];
   const isMinor = roman === roman.toLowerCase() || cleanRoman === "iv";
   return `${chordRoot}${isMinor ? "m" : ""}`;
 }
 
-function handleQuietSignal(rms) {
-  if (rms < MIN_RMS) {
-	targetCents += (0 - targetCents) * 0.04;
-	if (Math.abs(targetCents) < 0.05) targetCents = 0;
-	if (Date.now() - lastValidPitchTime >= NOTE_HOLD_TIME) {
-	  targetNote = "—";
-	  targetFrequency = null;
-	  centsWindow = [];
-	  noteElement.textContent = "—";
-	  frequencyElement.textContent = "Частота: —";
-	  centsElement.textContent = "Отклонение: —";
-	  statusElement.textContent = "Ожидание ноты C0–B8";
-	} else {
-	  statusElement.textContent = "Нота удерживается...";
-	}
-  } else {
-	statusElement.textContent = "Сигнал есть, определяю частоту...";
+function handleMissingSignal(now, messageKey) {
+  if (signalActive) targetCents = displayCents;
+  signalActive = false;
+  stableSince = null;
+  isTuned = false;
+  tunerMessageKey = lastValidPitchTime && now - lastValidPitchTime < NOTE_HOLD_TIME ? "noteHeld" : messageKey;
+  if (!lastValidPitchTime || now - lastValidPitchTime >= NOTE_HOLD_TIME) {
+    pitchTracker.reset();
+    targetMidi = null;
+    targetNote = "—";
+    targetFrequency = null;
+    noteElement.textContent = "—";
+    noteElement.classList.remove("is-perfect", "is-warning", "is-danger");
+    gaugeCenterElement.classList.remove("is-perfect", "is-warning", "is-danger");
+    gaugeZoneElement.classList.remove("is-perfect", "is-warning", "is-danger");
+    gaugeNeedleElement.classList.remove("is-perfect", "is-warning", "is-danger");
+    frequencyElement.textContent = `${t("frequency")}: —`;
+    centsElement.textContent = `${t("cents")}: —`;
   }
 }
 
-function getMedian(values) {
-  const sorted = [...values].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+function stringsDirection() {
+  if (tunerPresetElement.value === "chromatic" || Math.abs(targetCents) <= 3) return t("tuneInstrument");
+  return t(targetCents < 0 ? "tuneHigher" : "tuneLower");
+}
+
+function renderTunerStrings() {
+  const strings = MusicTheoryEngine.tunings[tunerPresetElement.value];
+  tunerStringsElement.hidden = !strings;
+  tunerStringsElement.replaceChildren();
+  tunerReferenceStatusElement.textContent = "";
+  if (!strings) return;
+  [...strings].reverse().forEach((midi, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button-secondary";
+    button.textContent = MusicTheoryEngine.noteName(midi);
+    button.setAttribute("aria-label", `${t("referenceStrings")} ${6 - index}: ${button.textContent}`);
+    button.addEventListener("click", () => playReferenceTone(midi));
+    tunerStringsElement.appendChild(button);
+  });
+}
+
+async function playReferenceTone(midi) {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!audioContext && !AudioContextClass) throw new Error("Web Audio API unavailable");
+    if (!audioContext) audioContext = new AudioContextClass();
+    if (audioContext.state === "suspended") await audioContext.resume();
+    const start = audioContext.currentTime + 0.02;
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = midiToFrequency(midi, referenceFrequency);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.15, start + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 1);
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 1.02);
+    tunerReferenceStatusElement.textContent = "";
+  } catch (error) {
+    console.error("Could not play reference tone:", error);
+    tunerReferenceStatusElement.textContent = t("audioError");
+  }
 }
 
 function createGaugeTicks() {
@@ -817,14 +846,10 @@ function createGaugeTicks() {
   gaugeTicksElement.appendChild(fragment);
 }
 
-function updateTuner(note, cents) {
+function updateTuner(note, cents, tuned) {
   const safeCents = Math.max(-50, Math.min(50, Number(cents) || 0));
   const angle = (safeCents / 50) * 90;
-  const state = Math.abs(safeCents) <= 5
-	? "is-perfect"
-	: safeCents < -5
-	  ? "is-warning"
-	  : "is-danger";
+  const state = tuned ? "is-perfect" : safeCents < 0 ? "is-warning" : "is-danger";
 
   gaugeNeedleElement.style.transform = `rotate(${angle}deg)`;
   gaugeNeedleElement.classList.remove("is-perfect", "is-warning", "is-danger");
@@ -838,35 +863,15 @@ function updateTuner(note, cents) {
   noteElement.textContent = note;
 }
 
-function keepLastNote(message) {
-  if (lastValidPitchTime > 0 && Date.now() - lastValidPitchTime < NOTE_HOLD_TIME) {
-	statusElement.textContent = "Нота удерживается...";
-	return;
-  }
-  currentMidi = null;
-  candidateMidi = null;
-  candidateFrames = 0;
-  smoothedCents = null;
-  targetCents = 0;
-  targetNote = "—";
-  targetFrequency = null;
-  centsWindow = [];
-  updateTuner("—", displayCents);
-  noteElement.textContent = "—";
-  frequencyElement.textContent = "Частота: —";
-  centsElement.textContent = "Отклонение: —";
-  statusElement.textContent = message;
-}
-
 function frequencyToNote(freq) {
   if (!Number.isFinite(freq) || freq < 15 || freq > 8000) return null;
 
-	const midi = Math.round(12 * Math.log2(freq / referenceFrequency) + 69);
+	const midi = MusicTheoryEngine.midiFromFrequency(freq, referenceFrequency);
   if (midi < 12 || midi > 119) return null;
 
   const noteName = NOTES[((midi % 12) + 12) % 12];
   const octave = Math.floor(midi / 12) - 1;
-	const targetFreq = referenceFrequency * Math.pow(2, (midi - 69) / 12);
+	const targetFreq = MusicTheoryEngine.frequency(midi, referenceFrequency);
   const cents = Math.round(1200 * Math.log2(freq / targetFreq));
 
   return {
@@ -880,20 +885,12 @@ function frequencyToNote(freq) {
   };
 }
 
-function frequencyToMidi(frequency) {
-  return frequencyToNote(frequency)?.midi ?? null;
-}
 function midiToFrequency(midi, tuningFrequency = DEFAULT_REFERENCE_FREQUENCY) {
-  return tuningFrequency * Math.pow(2, (midi - 69) / 12);
-}
-function calculateRms(data) {
-  let sum = 0;
-  for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-  return Math.sqrt(sum / data.length);
+  return MusicTheoryEngine.frequency(midi, tuningFrequency);
 }
 function getMicrophoneError(error) {
-  if (error.name === "NotAllowedError") return "Доступ к микрофону запрещён. Разрешите микрофон в настройках сайта.";
-  if (error.name === "NotFoundError") return "Микрофон не найден. Подключите микрофон и повторите попытку.";
-  if (error.name === "NotReadableError") return "Микрофон занят другой программой.";
-  return `Ошибка микрофона: ${error.message || error.name}`;
+  if (error.name === "NotAllowedError") return t("microphoneDenied");
+  if (error.name === "NotFoundError") return t("microphoneNotFound");
+  if (error.name === "NotReadableError") return t("microphoneInUse");
+  return `${t("microphoneError")}: ${error.message || error.name}`;
 }

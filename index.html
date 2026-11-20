@@ -3,11 +3,23 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { window.dataLayer.push(arguments); }
+    gtag("js", new Date());
+    gtag("config", "G-XXXXXXXXXX");
+    window.trackEvent = (name, params = {}) => {
+      if (typeof window.gtag === "function") window.gtag("event", name, params);
+    };
+  </script>
   <meta name="description" content="PitchMate — точный хроматический тюнер." />
   <title>PitchMate — Chromatic Tuner</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Lora:wght@500;600&family=Manrope:wght@400;500;600&display=swap&subset=cyrillic" rel="stylesheet" />
+  <link rel="stylesheet" href="interactive-theory.css" />
+  <link rel="stylesheet" href="ear-training.css" />
   <style>
     :root {
       --bg: #111113;
@@ -84,6 +96,10 @@
     .theme-toggle:active, .button-primary:active, .button-secondary:active, .scale-toggle:active, .theory-tab:active { transform: translateY(1px); }
     .section { display: none; padding-top: 18px; }
     .section.active { display: block; }
+    @media (prefers-reduced-motion: no-preference) {
+      .section.active { animation: section-enter .35s cubic-bezier(.22, 1, .36, 1) both; }
+      @keyframes section-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    }
     .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
     .section-heading h2 { margin: 0; font-size: clamp(20px, 3vw, 28px); letter-spacing: -.03em; }
     .section-heading p, .hero-card p { display: none; }
@@ -94,7 +110,7 @@
     .tuner-main { position: relative; min-height: 560px; padding: 22px 26px 18px; text-align: center; }
     .tuner-main::before { content: "PITCH / CHROMATIC"; position: absolute; top: 12px; left: 18px; color: var(--muted); font-family: "IBM Plex Mono", "JetBrains Mono", monospace; font-size: 9px; letter-spacing: .12em; }
     .note { margin: 28px 0 0; color: var(--text); font-family: "IBM Plex Mono", "JetBrains Mono", monospace; font-size: clamp(76px, 13vw, 148px); font-variant-numeric: tabular-nums; font-weight: 500; line-height: .9; letter-spacing: -.08em; transition: color .15s ease; }
-    .note.is-perfect { color: var(--good); }
+    .note.is-perfect { color: #43a047; }
     .note.is-warning { color: var(--warn); }
     .note.is-danger { color: var(--danger); }
     .frequency, .cents, .status { font-family: "IBM Plex Mono", "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
@@ -106,10 +122,15 @@
     .gauge-track { fill: none !important; stroke: var(--track-fill); stroke-width: 16; }
     .gauge-tick { stroke: var(--gauge-tick); stroke-width: 2; }
     .gauge-tick.zero { stroke: var(--gauge-zero); stroke-width: 4; }
-    .gauge-needle { fill: var(--good); transform-origin: 200px 200px; transition: transform .15s ease-out, fill .15s ease; }
+    .gauge-needle { fill: var(--good); transform-origin: 200px 200px; transition: fill .15s ease; }
     .gauge-center { fill: var(--good); transition: fill .15s ease; }
     .gauge-needle.is-warning, .gauge-center.is-warning, .gauge-zone.is-warning { fill: var(--warn); stroke: var(--warn); }
     .gauge-needle.is-danger, .gauge-center.is-danger, .gauge-zone.is-danger { fill: var(--danger); stroke: var(--danger); }
+    .gauge-needle.is-perfect, .gauge-center.is-perfect, .gauge-zone.is-perfect { fill: #43a047; stroke: #43a047; }
+    .gauge-zone.is-perfect, .gauge-zone.is-warning, .gauge-zone.is-danger { fill: none; }
+    .string-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+    .string-buttons[hidden] { display: none; }
+    .string-buttons button { min-width: 46px; }
     .gauge-scale-labels { display: flex; justify-content: space-between; padding: 0 9%; color: var(--muted); font-family: "IBM Plex Mono", "JetBrains Mono", monospace; font-size: 10px; }
     .control-card { display: grid; align-content: start; gap: 16px; }
     .control-card h3, .theory-card h3, .progression-result h3 { margin: 0; font-size: 14px; letter-spacing: .04em; text-transform: uppercase; }
@@ -129,6 +150,27 @@
     .progression-result { display: grid; align-content: start; gap: 14px; min-height: 300px; padding: 20px; border: 1px solid var(--line); border-radius: 2px; background: var(--surface-strong); }
     .chord-row { display: flex; flex-wrap: wrap; gap: 6px; }
     .chord { padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 2px; color: var(--text); background: var(--surface); font-family: "IBM Plex Mono", "JetBrains Mono", monospace; font-size: 13px; }
+    .progression-chord { cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+    .progression-chord:hover, .progression-chord:focus-visible, .progression-chord.active { border-color: var(--good); background: rgba(232, 111, 44, .14); outline: none; }
+    .progression-chord.active { box-shadow: inset 0 -2px 0 var(--good); }
+    .generator-instrument { display: grid; gap: 8px; padding-top: 2px; }
+    .generator-board-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .generator-board-header > strong { font-size: 12px; }
+    .generator-tabs { display: flex; gap: 5px; }
+    .generator-tabs .theory-tab { padding: 6px 9px; }
+    .generator-board { min-height: 92px; display: grid; place-items: center; overflow: hidden; padding: 10px; border: 1px dashed var(--line-strong); background: var(--surface-strong); }
+    .generator-piano { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 3px; width: 100%; height: 82px; }
+    .generator-piano-key { display: grid; align-items: end; justify-items: center; min-width: 0; padding: 5px 1px; border: 1px solid var(--line); border-radius: 3px; color: var(--key-text); background: var(--key); font-family: var(--font-mono); font-size: clamp(8px, 1.5vw, 11px); }
+    .generator-piano-key.is-black { align-items: center; height: 76%; border-color: #09090b; color: #fafafa; background: #242220; }
+    .generator-piano-key.is-chord-tone { border-color: var(--good); color: #fff; background: var(--good); box-shadow: 0 0 0 2px rgba(232, 111, 44, .18); }
+    .generator-fretboard-scroll { width: 100%; overflow-x: auto; }
+    .generator-fretboard { display: grid; grid-template-columns: 26px repeat(13, minmax(22px, 1fr)); min-width: 390px; }
+    .generator-fret-label { padding-bottom: 4px; color: var(--muted); font-family: var(--font-mono); font-size: 9px; text-align: center; }
+    .generator-string-label { display: grid; place-items: center; color: var(--muted); font-family: var(--font-mono); font-size: 10px; }
+    .generator-fret-cell { position: relative; display: grid; place-items: center; height: 26px; border-right: 1px solid rgba(255, 255, 255, .32); }
+    .generator-fret-cell::before { position: absolute; top: 50%; right: 0; left: 0; height: 1px; background: rgba(255, 255, 255, .58); content: ""; }
+    .generator-fret-marker { position: relative; z-index: 1; display: grid; place-items: center; width: 19px; height: 19px; border: 1px solid var(--good); border-radius: 50%; color: #fff; background: var(--good); font-family: var(--font-mono); font-size: 8px; }
+    .generator-fret-marker.is-root { border-color: var(--text); box-shadow: 0 0 0 1px var(--good); }
     .theory-card { padding: 18px; }
     .theory-card > p { color: var(--muted); font-size: 12px; line-height: 1.5; }
     .piano { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; height: 132px; margin-top: 14px; padding: 8px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-strong); }
@@ -224,6 +266,10 @@
       .interval-piano { gap: 3px; padding: 10px; }
       .interval-key { width: 38px; }
       .interval-arrow { font-size: 9px; }
+      .generator-board-header { align-items: flex-start; flex-direction: column; }
+      .generator-tabs { width: 100%; }
+      .generator-tabs .theory-tab { flex: 1; }
+      .generator-piano { gap: 2px; }
       .builder { gap: 4px; }
       .chord-role { min-height: 92px; padding-inline: 4px; }
     }
@@ -334,22 +380,87 @@
     [data-theme="light"] .black-key.active { color: #fff; background: #d95d24; }
     [data-theme="light"] .interval-key { border-radius: 5px; background: #fff; }
     [data-theme="light"] .interval-key.highlight { color: #bf4f1d; background: rgba(232, 111, 44, .14); }
+    [data-theme="light"] .generator-fret-cell { border-right-color: rgba(28, 25, 23, .24); }
+    [data-theme="light"] .generator-fret-cell::before { background: rgba(28, 25, 23, .42); }
+    [data-theme="light"] .generator-fret-marker { color: #fff; }
   </style>
 </head>
 <body>
   <main class="app-shell">
-    <header class="topbar"><div class="brand"><div class="brand-mark">P</div><div><strong>PitchMate</strong><span data-i18n="brandSubtitle">музыкальная лаборатория</span></div></div><nav class="nav" aria-label="Основная навигация"><button class="nav-button active" data-section="tunerSection" data-i18n="navTuner">Тюнер</button><button class="nav-button" data-section="theorySection" data-i18n="navTheory">Теория</button><button class="nav-button" data-section="generatorSection" data-i18n="navChords">Аккорды</button></nav><div class="topbar-actions"><select id="languageSelect" class="language-select" aria-label="Выбор языка"><option value="ru">Русский</option><option value="en">English</option><option value="kk">Қазақша</option></select><button id="themeToggle" class="theme-toggle" type="button" aria-label="Переключить тему">Тема</button></div></header>
-    <section id="tunerSection" class="section active"><div class="section-heading"><div><div class="eyebrow">Realtime audio</div><h2 data-i18n="tunerTitle">Хроматический тюнер</h2><p data-i18n="tunerDescription">Поднесите инструмент к микрофону. Стрелка плавно реагирует на отклонение от выбранной ноты.</p></div></div><div class="tuner-grid"><div class="panel tuner-main"><button id="startButton" class="button-primary" data-i18n="startMicrophone">Запустить микрофон</button><div id="note" class="note">—</div><div id="frequency" class="frequency">Частота: —</div><div id="cents" class="cents">Отклонение: —</div><div class="speedometer" aria-label="Шкала отклонения в центах" data-i18n-aria="gaugeLabel"><svg viewBox="0 0 400 230" role="img"><g id="gaugeScale" transform="rotate(180 200 200)"><path class="gauge-track" d="M 40 200 A 160 160 0 0 0 360 200" /><path id="gaugeZone" class="gauge-zone" d="M 181.3 81.5 A 120 120 0 0 0 218.7 81.5" /><g id="gaugeTicks"></g></g><g id="gaugeNeedle" class="gauge-needle"><path d="M 194 200 L 200 63 L 206 200 Z" /></g><circle id="gaugeCenter" class="gauge-center" cx="200" cy="200" r="13" /></svg></div><div class="gauge-scale-labels"><span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span></div><div id="status" class="status">Диапазон: C0–B8</div></div><aside class="panel control-card"><h3 data-i18n="signalSettings">Настройки сигнала</h3><div><label class="control-label" for="inputGain"><span data-i18n="smoothnessGain">Плавность / усиление</span><strong id="gainValue">100%</strong></label><input id="inputGain" type="range" min="0" max="150" value="100" step="1" /></div><div class="reference-control"><label class="control-label" for="referenceFrequency"><span data-i18n="referenceA4">Эталон A4</span><strong id="referenceFrequencyValue">440 Гц</strong></label><input id="referenceFrequency" class="reference-input" type="number" min="400" max="480" step="0.1" value="440" inputmode="decimal" /></div><p class="status" data-i18n="referenceDescription">Эталон A4 используется для расчёта нот и отклонения в центах.</p><p class="status" data-i18n="gainDescription">Ползунок меняет громкость сигнала мягко, без резких скачков.</p><button id="resetButton" class="button-secondary" data-i18n="resetSettings">Сбросить настройки</button></aside></div></section>
-    <section id="theorySection" class="section"><div class="section-heading"><div><div class="eyebrow">Learn the language</div><h2 data-i18n="theoryTitle">Интерактивная теория музыки</h2><p data-i18n="theoryDescription">Изучайте ноты, интервалы, гаммы, аккорды и прогрессии через звук и движение.</p></div></div><div class="theory-stack">
+    <header class="topbar"><div class="brand"><div class="brand-mark">P</div><div><strong>PitchMate</strong><span data-i18n="brandSubtitle">музыкальная лаборатория</span></div></div><nav class="nav" aria-label="Основная навигация"><button class="nav-button active" data-section="tunerSection" data-i18n="navTuner">Тюнер</button><button class="nav-button" data-section="theorySection" data-i18n="navTheory">Теория</button><button class="nav-button" data-section="generatorSection" data-i18n="navChords">Аккорды</button><button class="nav-button" data-section="earSection" data-i18n="earTitle">Развитие слуха</button></nav><div class="topbar-actions"><select id="languageSelect" class="language-select" aria-label="Выбор языка"><option value="ru">Русский</option><option value="en">English</option><option value="kk">Қазақша</option></select><button id="themeToggle" class="theme-toggle" type="button" aria-label="Переключить тему">Тема</button></div></header>
+    <section id="tunerSection" class="section active">
+      <div class="section-heading"><div><div class="eyebrow">Realtime audio</div><h2 data-i18n="tunerTitle">Хроматический тюнер</h2><p data-i18n="tunerDescription">Поднесите инструмент к микрофону. Стрелка плавно реагирует на отклонение от выбранной ноты.</p></div></div>
+      <div class="tuner-grid">
+        <div class="panel tuner-main">
+          <button id="startButton" class="button-primary" data-i18n="startMicrophone">Запустить микрофон</button>
+          <div id="note" class="note">—</div><div id="frequency" class="frequency">Частота: —</div><div id="cents" class="cents">Отклонение: —</div>
+          <div class="speedometer" aria-label="Шкала отклонения в центах" data-i18n-aria="gaugeLabel"><svg viewBox="0 0 400 230" role="img"><g id="gaugeScale" transform="rotate(180 200 200)"><path class="gauge-track" d="M 40 200 A 160 160 0 0 0 360 200" /><path id="gaugeZone" class="gauge-zone" d="M 181.3 81.5 A 120 120 0 0 0 218.7 81.5" /><g id="gaugeTicks"></g></g><g id="gaugeNeedle" class="gauge-needle"><path d="M 194 200 L 200 63 L 206 200 Z" /></g><circle id="gaugeCenter" class="gauge-center" cx="200" cy="200" r="13" /></svg></div>
+          <div class="gauge-scale-labels"><span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span></div><div id="status" class="status" aria-live="polite" data-initial="true">Диапазон: C0–B8</div>
+        </div>
+        <aside class="panel control-card">
+          <h3 data-i18n="signalSettings">Настройки сигнала</h3>
+          <div><label class="control-label" for="tunerPreset"><span data-i18n="tunerTuning">Строй</span></label><select id="tunerPreset"><option value="chromatic" data-i18n="chromatic">Хроматический</option><option value="standard" data-i18n="standardTuning">Стандартный E</option><option value="dropD">Drop D</option><option value="dropB">Drop B</option><option value="openG">Open G</option></select></div>
+          <div id="tunerStrings" class="string-buttons" role="group" data-i18n-aria="referenceStrings" hidden></div>
+          <div id="tunerReferenceStatus" class="status" aria-live="polite"></div>
+          <div><label class="control-label" for="inputGain"><span data-i18n="signalGain">Усиление</span><strong id="gainValue">100%</strong></label><input id="inputGain" type="range" min="0" max="150" value="100" step="1" /></div>
+          <div><label class="control-label" for="inputSmoothness"><span data-i18n="smoothness">Плавность</span><strong id="smoothnessValue">50%</strong></label><input id="inputSmoothness" type="range" min="0" max="100" value="50" step="1" /></div>
+          <div class="reference-control"><label class="control-label" for="referenceFrequency"><span data-i18n="referenceA4">Эталон A4</span><strong id="referenceFrequencyValue">440 Гц</strong></label><input id="referenceFrequency" class="reference-input" type="number" min="400" max="480" step="0.1" value="440" inputmode="decimal" /></div>
+          <p class="status" data-i18n="referenceDescription">Эталон A4 используется для расчёта нот и отклонения в центах.</p><p class="status" data-i18n="gainDescription">Ползунок меняет громкость сигнала мягко, без резких скачков.</p><button id="resetButton" class="button-secondary" data-i18n="resetSettings">Сбросить настройки</button>
+        </aside>
+      </div>
+    </section>
+    <section id="theorySection" class="section"><div class="section-heading"><div><div class="eyebrow">Learn the language</div><h2 data-i18n="theoryTitle">Интерактивная теория музыки</h2><p data-i18n="theoryDescription">Изучайте ноты, интервалы, гаммы, аккорды и прогрессии через звук и движение.</p></div></div><div id="theoryAudioStatus" class="status" role="status"></div><div class="theory-stack">
       <article class="panel theory-card"><h3 data-i18n="theoryCard1Title">1. 12 нот и октава</h3><p data-i18n="theoryCard1Description">Нажмите на клавишу, чтобы услышать ноту. Белые клавиши подписаны буквами, чёрные — диезами.</p><div id="pianoKeyboard" class="piano"></div></article>
       <article class="panel theory-card"><h3 data-i18n="theoryCard2Title">2. Тон и полутон</h3><p data-i18n="theoryCard2Description">Полутон — расстояние до соседней клавиши или соседнего лада.</p><div class="theory-tabs"><button class="theory-tab active" data-interval="piano" data-i18n="piano">Пианино</button><button class="theory-tab" data-interval="guitar" data-i18n="guitar">Гитара</button></div><div id="intervalView" class="interval-view"></div></article>
       <article class="panel theory-card"><h3 data-i18n="theoryCard3Title">3. Скелет гаммы</h3><p data-i18n="theoryCard3Description">Переключите лад и наблюдайте, как меняются расстояния между ступенями.</p><div class="scale-controls"><button id="scaleToggle" class="scale-toggle">Мажор</button><span id="scaleFormula" class="status">Тон · Тон · Полутон · Тон · Тон · Тон · Полутон</span></div><div id="scaleTrack" class="scale-track"></div><div id="scaleSteps" class="scale-steps"></div></article>
       <article class="panel theory-card chord-builder-card"><div class="card-kicker">HARMONY / TRIAD</div><h3 data-i18n="theoryCard4Title">4. Конструктор аккорда</h3><p data-i18n="theoryCard4Description">Третья ступень определяет характер трезвучия.</p><div id="chordBuilder" class="builder"><div class="builder-note chord-role"><span class="role-index">1</span><strong>E</strong><small>Тоника</small></div><div class="builder-note chord-role chord-role-third"><span class="role-index">3</span><strong id="builderThird">G#</strong><small>Терция</small></div><div class="builder-note chord-role"><span class="role-index">5</span><strong>B</strong><small>Квинта</small></div></div><button id="minorChordButton" class="button-secondary">Сделать минорным</button></article>
       <article class="panel theory-card progression-player"><div class="card-header"><div><div class="card-kicker">SEQUENCE / PLAYBACK</div><h3 data-i18n="theoryCard5Title">5. Движение песни</h3></div><button id="playProgressionButton" class="button-primary" data-i18n="play">Play</button></div><p data-i18n="theoryCard5Description">Слушайте переход E — Em — A — Am.</p><div id="playerChords" class="player-chords"><button class="player-chord" type="button"><strong>E</strong><small>I</small></button><button class="player-chord" type="button"><strong>Em</strong><small>i</small></button><button class="player-chord" type="button"><strong>A</strong><small>IV</small></button><button class="player-chord" type="button"><strong>Am</strong><small>iv</small></button></div></article>
+      <article id="chromaticModule" class="panel theory-card"></article>
+      <article id="fretboardModule" class="panel theory-card"></article>
     </div></section>
-    <section id="generatorSection" class="section"><div class="section-heading"><div><div class="eyebrow" data-i18n="generatorEyebrow">Find your next idea</div><h2 data-i18n="generatorTitle">Генератор прогрессий</h2><p data-i18n="generatorDescription">Выберите тонику, лад и настроение — PitchMate соберёт гармоническую последовательность.</p></div></div><div class="generator"><div class="panel form-stack"><label class="control-label" for="keySelect"><span data-i18n="tonic">Тоника</span></label><select id="keySelect"><option>C</option><option>C#</option><option>D</option><option>D#</option><option>E</option><option>F</option><option>F#</option><option>G</option><option>G#</option><option>A</option><option>A#</option><option>B</option></select><label class="control-label" for="modeSelect"><span data-i18n="mode">Лад</span></label><select id="modeSelect"><option value="major" data-i18n="major">Мажор</option><option value="minor" data-i18n="minor">Минор</option></select><label class="control-label" for="moodSelect"><span data-i18n="mood">Настроение</span></label><select id="moodSelect"><option value="dreamy" data-i18n="dreamy">Мечтательное</option><option value="sad" data-i18n="sad">Грустное</option><option value="energetic" data-i18n="energetic">Энергичное</option><option value="melancholic" data-i18n="melancholic">Меланхоличное</option><option value="nostalgic" data-i18n="nostalgic">Ностальгическое</option><option value="dark" data-i18n="dark">Тёмное</option></select><button id="generateButton" class="button-primary" data-i18n="generate">Сгенерировать прогрессию</button></div><div class="progression-result"><h3 id="progressionName">Мечтательная • C Мажор</h3><strong data-i18n="roman">Символические ступени</strong><div id="progressionRoman" class="chord-row"><span class="chord">[ I ]</span><span class="chord">[ iii ]</span><span class="chord">[ IV ]</span><span class="chord">[ iv ]</span></div><strong data-i18n="chordNames">Буквенные аккорды</strong><div id="progressionChords" class="chord-row"><span class="chord">C — Em — F — Fm</span></div><p id="progressionDescription" class="status">Мягкая и воздушная последовательность с лёгким оттенком ностальгии.</p><button id="listenGeneratedButton" class="button-primary" data-i18n="listen">Прослушать прогрессию</button><span id="generatedPlaybackStatus" class="status" aria-live="polite"></span></div></div></section>
+    <section id="generatorSection" class="section">
+      <div class="section-heading"><div><div class="eyebrow" data-i18n="generatorEyebrow">Find your next idea</div><h2 data-i18n="generatorTitle">Генератор прогрессий</h2><p data-i18n="generatorDescription">Выберите тонику, лад и настроение — PitchMate соберёт гармоническую последовательность.</p></div></div>
+      <div class="generator">
+        <div class="panel form-stack">
+          <label class="control-label" for="keySelect"><span data-i18n="tonic">Тоника</span></label>
+          <select id="keySelect"><option>C</option><option>C#</option><option>D</option><option>D#</option><option>E</option><option>F</option><option>F#</option><option>G</option><option>G#</option><option>A</option><option>A#</option><option>B</option></select>
+          <label class="control-label" for="modeSelect"><span data-i18n="mode">Лад</span></label>
+          <select id="modeSelect"><option value="major" data-i18n="major">Мажор</option><option value="minor" data-i18n="minor">Минор</option></select>
+          <label class="control-label" for="moodSelect"><span data-i18n="mood">Настроение</span></label>
+          <select id="moodSelect"><option value="dreamy" data-i18n="dreamy">Мечтательное</option><option value="sad" data-i18n="sad">Грустное</option><option value="energetic" data-i18n="energetic">Энергичное</option><option value="melancholic" data-i18n="melancholic">Меланхоличное</option><option value="nostalgic" data-i18n="nostalgic">Ностальгическое</option><option value="dark" data-i18n="dark">Тёмное</option></select>
+          <button id="generateButton" class="button-primary" data-i18n="generate">Сгенерировать прогрессию</button>
+        </div>
+        <div class="progression-result">
+          <h3 id="progressionName">Мечтательная • C Мажор</h3>
+          <strong data-i18n="roman">Символические ступени</strong>
+          <div id="progressionRoman" class="chord-row"><span class="chord">[ I ]</span><span class="chord">[ iii ]</span><span class="chord">[ IV ]</span><span class="chord">[ iv ]</span></div>
+          <strong data-i18n="chordNames">Буквенные аккорды</strong>
+          <div id="progressionChords" class="chord-row"><span class="chord">C — Em — F — Fm</span></div>
+          <div class="generator-instrument">
+            <div class="generator-board-header">
+              <strong data-i18n="chordTones">Ноты аккорда</strong>
+              <div class="generator-tabs" role="group">
+                <button class="theory-tab generator-tab active" type="button" data-instrument="piano" aria-pressed="true" data-i18n="piano">Пианино</button>
+                <button class="theory-tab generator-tab" type="button" data-instrument="guitar" aria-pressed="false" data-i18n="guitar">Гитара</button>
+              </div>
+            </div>
+            <div id="generatorBoard" class="generator-board" data-i18n-aria="chordTones"></div>
+          </div>
+          <p id="progressionDescription" class="status">Мягкая и воздушная последовательность с лёгким оттенком ностальгии.</p>
+          <button id="listenGeneratedButton" class="button-primary" data-i18n="listen">Прослушать прогрессию</button>
+          <span id="generatedPlaybackStatus" class="status" aria-live="polite"></span>
+        </div>
+      </div>
+    </section>
+    <section id="earSection" class="section"></section>
   </main>
-  <script src="https://cdn.jsdelivr.net/npm/soundfont-player@0.12.0/dist/soundfont-player.min.js"></script>
+  <script src="instrument-samples.js"></script>
+  <script src="instrument-player.js"></script>
+  <script src="music-theory.js"></script>
+  <script src="pitch-detector.js"></script>
   <script src="app.js"></script>
+  <script src="interactive-theory.js"></script>
+  <script src="ear-training-engine.js"></script>
+  <script src="ear-training.js"></script>
 </body>
 </html>

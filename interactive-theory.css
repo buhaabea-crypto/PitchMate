@@ -1,0 +1,45 @@
+#chromaticModule, #fretboardModule, .progression-result, .generator-board { min-width: 0; }
+.generator-board { grid-template-columns: minmax(0, 1fr); }
+.module-controls { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; align-items: end; }
+.module-controls label { display: grid; gap: 5px; flex: 1 1 150px; color: var(--muted); font-size: 11px; }
+.module-controls label[hidden] { display: none; }
+.module-controls button { min-height: 36px; }
+.chromatic-layout { display: grid; justify-items: center; gap: 12px; }
+.chromatic-circle { width: min(100%, 520px); overflow: visible; }
+.chromatic-circle .orbit { fill: none; stroke: var(--line-strong); stroke-width: 1; }
+.chromatic-circle .polygon { fill: rgba(232,111,44,.16); stroke: var(--good); stroke-width: 2; }
+.chromatic-circle .interval-arc { fill: none; stroke: var(--good); stroke-width: 1.5; }
+.chromatic-circle .interval-label { fill: var(--text); font: 11px var(--font-mono); text-anchor: middle; paint-order: stroke; stroke: var(--panel); stroke-width: 5px; stroke-linejoin: round; }
+.chromatic-circle .node { cursor: pointer; outline: none; }
+.chromatic-circle .node circle { fill: var(--surface); stroke: var(--line-strong); stroke-width: 1; filter: drop-shadow(0 0 7px rgba(232,111,44,0)); }
+.chromatic-circle .node.active circle { fill: var(--good); stroke: var(--good); filter: drop-shadow(0 0 7px rgba(232,111,44,.65)); }
+.chromatic-circle .node:focus-visible circle { stroke: var(--text); stroke-width: 3; }
+.chromatic-circle .node text { fill: var(--text); text-anchor: middle; font: bold 13px var(--font-mono); pointer-events: none; }
+.chromatic-circle .node .syllable { fill: var(--muted); font: 9px var(--font-body); }
+.chromatic-circle .node.active text { fill: #1b120d; }
+.chromatic-circle .center-name { fill: var(--good); text-anchor: middle; font: bold 38px var(--font-mono); }
+.chromatic-circle .center-description { fill: var(--text); text-anchor: middle; font: 11px var(--font-body); }
+.chromatic-piano { width: min(100%, 520px); height: 85px; margin: 0; }
+.chromatic-piano .active { color: #1b120d; background: var(--good); box-shadow: 0 0 12px rgba(232,111,44,.35); }
+@media (prefers-reduced-motion: no-preference) {
+  .chromatic-circle .node circle { transition: fill .42s ease, stroke .42s ease, filter .42s ease; }
+  .chromatic-circle .node text { transition: fill .42s ease; }
+  .chromatic-piano .piano-key { transition: color .42s ease, background-color .42s ease, box-shadow .42s ease, transform .15s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chromatic-piano .piano-key { transition: none; }
+}
+.fret-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
+.fret-grid { display: grid; grid-template-columns: 38px repeat(13, minmax(38px, 1fr)); min-width: 570px; }
+.fret-heading, .fret-string { display: grid; place-items: center; color: var(--muted); font: 10px var(--font-mono); min-height: 25px; }
+.fret-heading.inlay { color: var(--good); }
+.fret-cell { position: relative; display: grid; place-items: center; height: 36px; padding: 0; border: 0; border-right: 1px solid var(--line-strong); background: transparent; }
+button.fret-cell:hover, button.fret-cell:focus-visible { background: rgba(232,111,44,.12); outline: 1px solid var(--good); }
+.fret-cell::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: var(--muted); }
+.fret-cell.open { border-right: 3px solid var(--line-strong); }
+.fret-marker { position: relative; display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 2px; border: 1px solid var(--good); border-radius: 50%; color: var(--text); background: var(--panel); font: 9px var(--font-mono); }
+.fret-marker.root, .fret-marker.selected { color: #1b120d; background: var(--good); box-shadow: 0 0 9px rgba(232,111,44,.4); }
+.fret-marker.muted { border-color: var(--line-strong); color: var(--muted); }
+.fret-position-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fret-position-controls .status { flex: 1; }
+.module-status { min-height: 1.5em; }

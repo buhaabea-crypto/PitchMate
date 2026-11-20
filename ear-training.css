@@ -1,0 +1,47 @@
+.ear-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 12px; }
+#earSection [hidden] { display: none !important; }
+.ear-settings, .ear-exercise { display: grid; align-content: start; gap: 12px; min-width: 0; }
+.ear-settings label { display: grid; gap: 5px; }
+.ear-settings .ear-check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 12px; }
+.ear-check input { accent-color: var(--good); }
+.ear-stats, .ear-actions, .ear-answers { display: flex; flex-wrap: wrap; gap: 8px; }
+.ear-stats span { padding: 8px; border: 1px solid var(--line); background: var(--surface); font: 11px var(--font-mono); }
+.ear-answers button { min-width: 85px; text-transform: none; }
+.ear-answers button.correct { border-color: #43a047; color: #43a047; }
+.ear-answers button.wrong { border-color: #db5d50; color: #db5d50; }
+.ear-feedback { min-height: 1.5em; font-weight: 600; }
+.ear-feedback.correct { color: #43a047; }
+.ear-feedback.wrong { color: #d65b50; }
+.piano.ear-keyboard { height: 95px; margin: 0; }
+.ear-keyboard .piano-key { font-size: 11px; }
+.ear-pitch { display: grid; gap: 10px; }
+.ear-hint { color: var(--muted); line-height: 1.5; font-size: 12px; }
+.ear-actions button:disabled, .ear-answers button:disabled { opacity: .65; cursor: default; }
+.ear-question { margin: 0; color: var(--muted); font-size: 13px; }
+.ear-question strong { color: var(--text); }
+.ear-progress { height: 7px; margin-top: 6px; background: var(--line); overflow: hidden; }
+.ear-progress > div { height: 100%; width: 0; background: var(--good); }
+.ear-card, .ear-summary { border: 1px solid var(--line-strong); padding: 14px; background: var(--surface); }
+.ear-card p, .ear-summary p { margin: 0 0 10px; }
+.ear-card.correct { border-color: #43a047; color: var(--text); }
+.ear-card.wrong { border-color: #d65b50; color: var(--text); }
+.ear-mini-keyboard { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; margin: 5px 0 12px; }
+.ear-mini-key { display: grid; place-items: end center; min-width: 0; height: 40px; border: 1px solid var(--line-strong); background: var(--key); color: var(--key-text); font: 10px var(--font-mono); }
+.ear-mini-key.black { background: #242220; color: #fff; height: 32px; }
+.ear-mini-key.active { background: var(--good); color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .ear-progress > div { transition: width .45s cubic-bezier(.22, 1, .36, 1); }
+  .ear-enter { animation: ear-enter .35s cubic-bezier(.22, 1, .36, 1) both; }
+  .ear-answers button { transition: transform .2s cubic-bezier(.22, 1, .36, 1); }
+  .ear-answers button:not(:disabled):hover { transform: translateY(-1px); }
+  .ear-answers button:not(:disabled):active { transform: scale(.97); }
+  .ear-card.correct { animation: ear-pulse .65s cubic-bezier(.22, 1, .36, 1); }
+  .ear-card.wrong { animation: ear-shake .4s cubic-bezier(.22, 1, .36, 1); }
+  @keyframes ear-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes ear-pulse { 50% { opacity: .9; transform: scale(1.005); } }
+  @keyframes ear-shake { 25% { transform: translateX(-4px); } 55% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
+}
+@media (max-width: 820px) {
+  .ear-layout { grid-template-columns: 1fr; }
+  .nav { flex-wrap: wrap; }
+}
