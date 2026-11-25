@@ -25,6 +25,7 @@ Ear Training offers interval, chord quality, scale/mode, pitch-matching and
 melodic-dictation exercises in ten-question sessions. Choose difficulty,
 instrument, root range, speed and direction. Review the diagnostic card before
 advancing; use Space to replay, 1–9 to answer, and Enter for the next question.
+Interval answers are labeled by their distance in semitones.
 Each correct answer scores one point, plus one bonus point when the streak is
 at least two. The summary offers practice on the most frequently missed area.
 Pitch matching starts from a hidden detuning. The slider shows the adjustment

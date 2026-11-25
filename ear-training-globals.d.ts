@@ -1,5 +1,6 @@
 declare const translations: Record<string, Record<string, string>>;
 declare const languageSelect: HTMLSelectElement;
+declare let currentLanguage: "en" | "ru" | "kk";
 declare function t(key: string): string;
 declare function applyTranslations(): void;
 declare function playInstrument(instrument: "piano" | "guitar", events: EarAudioEvent[], status: HTMLElement, channel?: string): Promise<number | null>;

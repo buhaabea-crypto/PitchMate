@@ -72,7 +72,7 @@
   Object.assign(words.en, {
     earEasy: "Beginner", earMedium: "Intermediate", earHard: "Pro", earStart: "Start new session",
     earProgress: "Question", earYourChoice: "Your choice", earCorrectAnswer: "Correct answer",
-    earFormula: "Formula (semitones from root)", earSemitones: "semitones", earStreakBonus: "Streak bonus",
+    earFormula: "Formula (semitones from root)", earSemitoneOne: "semitone", earSemitoneOther: "semitones", earStreakBonus: "Streak bonus",
     earHearCorrect: "Hear correct", earHearChoice: "Hear your choice", earNext: "Next question (Enter)",
     earSummary: "Session summary", earAccuracy: "Accuracy", earFocus: "Focus area", earPerfect: "No missed answers",
     earPractice: "Practice weakest area", earNarrower: "The correct interval is narrower.",
@@ -84,7 +84,7 @@
   Object.assign(words.ru, {
     earEasy: "Начальный", earMedium: "Средний", earHard: "Профи", earStart: "Начать новую сессию",
     earProgress: "Вопрос", earYourChoice: "Ваш ответ", earCorrectAnswer: "Правильный ответ",
-    earFormula: "Формула (полутоны от тоники)", earSemitones: "полутонов", earStreakBonus: "Бонус за серию",
+    earFormula: "Формула (полутоны от тоники)", earSemitoneOne: "полутон", earSemitoneFew: "полутона", earSemitoneMany: "полутонов", earSemitoneOther: "полутона", earStreakBonus: "Бонус за серию",
     earHearCorrect: "Слушать правильный", earHearChoice: "Слушать ваш ответ", earNext: "Следующий вопрос (Enter)",
     earSummary: "Итоги сессии", earAccuracy: "Точность", earFocus: "Зона внимания", earPerfect: "Ошибок нет",
     earPractice: "Тренировать слабое место", earNarrower: "Правильный интервал уже.",
@@ -96,7 +96,7 @@
   Object.assign(words.kk, {
     earEasy: "Бастаушы", earMedium: "Орташа", earHard: "Кәсіби", earStart: "Жаңа сессияны бастау",
     earProgress: "Сұрақ", earYourChoice: "Сіздің жауабыңыз", earCorrectAnswer: "Дұрыс жауап",
-    earFormula: "Формула (тоникадан жарты тон)", earSemitones: "жарты тон", earStreakBonus: "Қатар бонусы",
+    earFormula: "Формула (тоникадан жарты тон)", earSemitoneOne: "жарты тон", earSemitoneOther: "жарты тон", earStreakBonus: "Қатар бонусы",
     earHearCorrect: "Дұрыс жауапты тыңдау", earHearChoice: "Өз жауабыңызды тыңдау", earNext: "Келесі сұрақ (Enter)",
     earSummary: "Сессия нәтижесі", earAccuracy: "Дәлдік", earFocus: "Назар аударатын тақырып", earPerfect: "Қате жоқ",
     earPractice: "Әлсіз тұсты жаттықтыру", earNarrower: "Дұрыс интервал тарлау.",
@@ -244,6 +244,12 @@
     5: "Here Comes the Bride", 7: "Star Wars", 9: "My Bonnie Lies over the Ocean", 12: "Over the Rainbow" };
   /** @param {string} answer */
   const label = (answer) => labelKeys[answer] ? t(labelKeys[answer]) : t(answer);
+  /** @param {number} count */
+  function semitoneLabel(count) {
+    const category = new Intl.PluralRules(currentLanguage).select(count);
+    const key = `earSemitone${category[0].toUpperCase()}${category.slice(1)}`;
+    return `${count} ${t(words[currentLanguage][key] ? key : "earSemitoneOther")}`;
+  }
   const currentStats = () => stats[`${settings.mode}:${settings.difficulty}`] || { attempts: 0, correct: 0, streak: 0, best: 0 };
   /** @param {EarAudioEvent[]} events */
   async function play(events) {
@@ -279,7 +285,7 @@
     if (q.mode === "pitch") return `${Number(choice) > 0 ? "+" : ""}${choice} ¢`;
     if (q.mode === "dictation") return choice.split(",").map((note) => names[Number(note)]).join(" · ");
     const steps = q.mode === "interval" ? EarTrainingEngine.intervalNames.indexOf(choice) : -1;
-    return steps > 0 ? `${choice} (${steps} ${t("earSemitones")})` : label(choice);
+    return steps > 0 ? semitoneLabel(steps) : label(choice);
   }
   /** @param {EarQuestion} q @param {string} choice */
   function formula(q, choice) {
@@ -307,7 +313,7 @@
   function focusLabel(key) {
     if (settings.mode === "pitch") return `${t("earPitchFocus")}: ${names[Number(key)]}`;
     if (settings.mode === "dictation") return `${t("earDictationFocus")} ${names[Number(key)]}`;
-    return settings.mode === "interval" ? `${key} (${EarTrainingEngine.intervalNames.indexOf(key)} ${t("earSemitones")})` : label(key);
+    return settings.mode === "interval" ? semitoneLabel(EarTrainingEngine.intervalNames.indexOf(key)) : label(key);
   }
   function weakest() {
     return Object.keys(misses).sort((a, b) => misses[b] - misses[a])[0] || "";
@@ -420,7 +426,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "button-secondary";
-        button.textContent = label(choice);
+        button.textContent = choiceLabel(activeQuestion, choice);
         button.disabled = answered;
         if (answered && choice === activeQuestion.answer) button.classList.add("correct");
         if (answered && !correctResult && choice === selected) button.classList.add("wrong");
